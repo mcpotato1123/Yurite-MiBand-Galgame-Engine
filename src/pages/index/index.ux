@@ -1,0 +1,198 @@
+<template>
+  <div class="page" style="{{pageStyle}}" onswipe="ban">
+    <image class="bg" style="{{fullStyle}}" src="/common/home.png"></image>
+    <div class="shade" style="{{fullStyle}}"></div>
+
+    <div class="panel" style="{{panelStyle}}{{panelPadStyle}}">
+      <text class="resume" style="{{smallFontStyle}}" if="{{hasAuto}}">最近进度 · {{autoText}}</text>
+      <text class="resume" style="{{smallFontStyle}}" if="{{!hasAuto}}">还没有存档，从序章开始吧</text>
+
+      <!-- 竖排：8 个按钮各占一行。标准版屏只有 21mm 宽，老版式把 5 个挤一行
+           每个才 2.9mm，根本点不上，所以屏高够的时候全部拆成整行大按钮。 -->
+      <div class="btn btn-main" style="{{vBtnStyle}}" if="{{vertical}}" onclick="start" onswipe="ban"><text class="btn-t" style="{{btnFontStyle}}">开始阅读</text></div>
+      <div class="btn" style="{{vBtnStyle}}" if="{{vertical && hasAuto}}" onclick="resume" onswipe="ban"><text class="btn-t" style="{{btnFontStyle}}">继续阅读</text></div>
+      <div class="btn" style="{{vBtnStyle}}" if="{{vertical}}" onclick="openSaves" onswipe="ban"><text class="btn-t" style="{{btnFontStyle}}">存档</text></div>
+      <div class="btn" style="{{vBtnStyle}}" if="{{vertical}}" onclick="openChapters" onswipe="ban"><text class="btn-t" style="{{btnFontStyle}}">章节</text></div>
+      <div class="btn" style="{{vBtnStyle}}" if="{{vertical}}" onclick="openCg" onswipe="ban"><text class="btn-t" style="{{btnFontStyle}}">CG 鉴赏</text></div>
+      <div class="btn" style="{{vBtnStyle}}" if="{{vertical}}" onclick="openSettings" onswipe="ban"><text class="btn-t" style="{{btnFontStyle}}">设置</text></div>
+      <div class="btn" style="{{vBtnStyle}}" if="{{vertical}}" onclick="openAbout" onswipe="ban"><text class="btn-t" style="{{btnFontStyle}}">关于</text></div>
+      <div class="btn btn-quit" style="{{vBtnQuitStyle}}" if="{{vertical}}" onclick="quit" onswipe="ban"><text class="btn-t" style="{{btnFontStyle}}">退出</text></div>
+
+      <!-- 横排：老版式。Pro 的面板只有 240 高，装不下 8 行，所以走这一支。 -->
+      <div class="btn btn-main" style="{{btnWideStyle}}{{btnStyle}}" if="{{!vertical}}" onclick="start" onswipe="ban"><text class="btn-t" style="{{btnFontStyle}}">开始阅读</text></div>
+      <div class="btn" style="{{btnWideStyle}}{{btnStyle}}" if="{{!vertical && hasAuto}}" onclick="resume" onswipe="ban"><text class="btn-t" style="{{btnFontStyle}}">继续阅读</text></div>
+      <div class="row" style="{{rowStyle}}" if="{{!vertical}}">
+        <div class="btn btn-5" style="{{smallStyle}}" onclick="openSaves" onswipe="ban"><text class="btn-ts" style="{{smallFontStyle}}">存档</text></div>
+        <div class="btn btn-5" style="{{smallStyle}}" onclick="openChapters" onswipe="ban"><text class="btn-ts" style="{{smallFontStyle}}">章节</text></div>
+        <div class="btn btn-5" style="{{smallStyle}}" onclick="openCg" onswipe="ban"><text class="btn-ts" style="{{smallFontStyle}}">CG</text></div>
+        <div class="btn btn-5" style="{{smallStyle}}" onclick="openSettings" onswipe="ban"><text class="btn-ts" style="{{smallFontStyle}}">设置</text></div>
+        <div class="btn btn-5" style="{{smallStyle}}" onclick="openAbout" onswipe="ban"><text class="btn-ts" style="{{smallFontStyle}}">关于</text></div>
+      </div>
+      <div class="btn btn-quit" style="{{btnWideStyle}}{{btnStyle}}" if="{{!vertical}}" onclick="quit" onswipe="ban"><text class="btn-t" style="{{btnFontStyle}}">退出</text></div>
+    </div>
+  </div>
+</template>
+
+<style>
+  /* ⚠️ 下面所有写死的 top / height 只是**内联样式没生效时的兜底**（= 手环 9 Pro 的值）。
+     真正的纵向几何由 common/layout.js 按运行时探到的屏幕比例算出，
+     在 onInit / onLayoutReady 里拼成内联 style 覆盖掉这里 —— 见 applyGeometry()。
+     336×480 上两者逐像素相同，所以 Pro 的观感不变；更高的设计空间（标准版 824/858）
+     则靠 .panel 的 top = lay.H - PANEL_H 把底板继续贴在屏幕底部。 */
+  .page { width: 336px; height: 480px; background-color: #0d0910; position: relative; }
+  .bg { position: absolute; top: 0px; left: 0px; width: 336px; height: 480px; object-fit: cover; }
+  /* 压暗层：用 rgba 背景色而不是 opacity——opacity 会让运行时把整棵子树离屏合成，
+     在手环固件上会把带子节点的容器渲染成横向条纹 */
+  .shade { position: absolute; top: 0px; left: 0px; width: 336px; height: 480px;
+           background-color: rgba(13, 9, 16, 0.34); }
+
+  /* 主页顶部的 "Yurite" + 副标题文字已删掉：
+     现在 home.png 里就是原图那张「logo 在左、女孩在右」的完整构图，
+     再叠一行文字会把它盖住、而且内容重复。 */
+
+  /* 底板高 240 固定：里面装的是 6 行固定高 40 的按钮 + 间距，屏幕变高也不会多出内容，
+     跟着放大反而会让按钮之间出现大片空白。所以只把它的**纵向位置**交给几何算：
+     top = 设计高 - 240，任何屏高下都贴在屏幕底部。 */
+  .panel { position: absolute; top: 240px; left: 0px; width: 336px; height: 240px;
+           background-color: rgba(21, 15, 25, 0.94); flex-direction: column;
+           align-items: center; padding-top: 12px; }
+  .resume { font-size: 15px; color: #b9a7b3; margin-bottom: 8px; }
+
+  .btn { width: 236px; height: 40px; border-radius: 20px; background-color: #32243a;
+         align-items: center; justify-content: center; margin-bottom: 8px; }
+  .btn-main { background-color: #b95079; }
+  .btn-quit { background-color: #241a2b; }
+  .btn-t { font-size: 19px; color: #ffffff; }
+  /* 5 个小按钮专用：236/5 ≈ 46px，字号 16 才放得下「设置」「关于」这种两字标签。
+     不能直接改 .btn-t，那样会连带把「开始阅读」等主按钮的字号也缩小。 */
+  .btn-ts { font-size: 16px; color: #ffffff; }
+  .row { width: 236px; flex-direction: row; justify-content: space-between; }
+  .btn-half { width: 114px; }
+  .btn-third { width: 74px; }
+  .btn-quarter { width: 54px; }
+  .btn-5 { width: 46px; }
+</style>
+
+<script>
+import router from '@system.router'
+import { loadAutoSave } from '../../common/reader.js'
+import { currentLayout, onLayoutReady } from '../../common/geo.js'
+
+// 底板高固定 240：里面是 6 行固定高 40 的按钮 + 间距 + 12 的顶距，
+// 屏幕变高也不会多出内容，所以只有它的纵向位置需要跟着设计高走。
+const PANEL_H = 240
+
+export default {
+  // 统一用 protected，不要用 data（两者不能共存，会抛错）
+  protected: {
+    hasAuto: false,
+    autoText: '',
+
+    // —— 自适应几何：由 common/layout.js 按屏幕实际尺寸算出（设计坐标，宽恒 336）
+    lay: currentLayout(),
+    pageStyle: '', fullStyle: '', panelStyle: '', panelPadStyle: '',
+    vertical: false,
+    btnStyle: '', btnWideStyle: '', btnFontStyle: '',
+    smallFontStyle: '', rowStyle: '', smallStyle: '',
+    vBtnStyle: '', vBtnQuitStyle: ''
+  },
+
+  onInit() {
+    // 自适应几何：先用当前已知的屏幕尺寸排一次（同步路径可能已经拿到真实尺寸），
+    // 异步探测回来后再排一次。放最前面，后面依赖几何的初始化才能用上。
+    this.applyGeometry()
+    onLayoutReady(() => { this.applyGeometry() })
+    this.refresh()
+  },
+  onShow() { this.refresh() },
+
+  // ---------------------------------------------------------------- 自适应几何
+  // Vela 的 CSS 是静态的，屏幕尺寸却只有运行时才知道（而且异步），
+  // 所以纵向几何只能走内联 style —— 这是"一份代码适配多型号"的关键。
+  applyGeometry() {
+    this.lay = currentLayout()
+    const L = this.lay
+    const p = (v) => v + 'px'
+    const ri = (v) => Math.round(v)
+
+    // 整屏铺满的两层：背景图与压暗层。宽高都用设计空间的 H，
+    // 否则在 336×824 上只有上面一半有画面、下面会露出 .page 的底色。
+    // ⚠️ 用视口百分比，**不要**用算出来的 W/H：
+    // 一旦引擎算的尺寸和运行时真实视口不同源，页面就会被当成可滚动内容
+    // （红米手表上表现为「界面能上下滑」）。100% 相对的是视口，与数值无关。
+    this.pageStyle = 'width:100%;height:100%;'
+    this.fullStyle = 'width:' + p(L.W) + ';height:' + p(L.H) + ';'
+
+    // 底板**顶住封面图**：顶 = 封面高 + 间距（layout 里算好，恒为 240），
+    // 一直铺到屏幕底。屏越高底板越高，按钮跟着等比放大 ——
+    // 不然标准版（设计高 824）上封面和底板之间会空出一大片。
+    this.panelStyle = 'top:' + p(L.homePanelTop) + ';height:' + p(L.homePanelH) + ';'
+
+    // ---- 面板内部
+    // 排法由 layout 决定（屏高够就竖排，见 layout.js 的 homeVertical）：
+    //   竖排 = 8 个按钮各占一行，每个都能做大 —— 标准版屏只有 21mm 宽，
+    //          老版式把 5 个挤一行，每个才 2.9mm，点不上
+    //   横排 = 老版式（Pro 的面板只有 240 高，装不下 8 行）
+    this.vertical = !!L.homeVertical
+
+    const s = L.homeScale
+    const fs = L.homeFontScale
+    const btnH = L.homeBtnH
+    const btnW = 236                                  // 横排主按钮宽度
+    const mainFont = ri(19 * fs)
+    // 竖排时按钮可以占到面板全宽（屏小，越宽越好点）
+    const wideW = L.W - 28
+    const rowW = Math.min(L.W - 28, ri(btnW * s))
+    const gap = L.homeGap
+    const smallW = ri((rowW - gap * 4) / 5)
+    const smallH = Math.min(btnH, ri(smallW * 1.15))
+    // 横排时小药丸上是两个字的标签，字号不能超过「药丸宽度 / 2.4」太多，否则字会顶到边。
+    // 标准版上 fs 会到 1.56，不封顶的话 2 字 × 25px 正好等于 50 宽的药丸。
+    const smallFont = Math.min(ri(16 * fs), Math.floor(smallW / 2.4))
+    this.btnFontStyle = 'font-size:' + p(mainFont) + ';'
+    this.smallFontStyle = 'font-size:' + p(smallFont) + ';'
+
+    // 面板内容总高，用来垂直居中（多余空间对半分，不要全堆在底部）
+    const rows = this.vertical ? 8 : 4
+    const contentH = L.homeResumeH + rows * (btnH + gap)
+    const padTop = Math.max(ri(12 * s), ri((L.homePanelH - contentH) / 2))
+    this.panelPadStyle = 'padding-top:' + p(padTop) + ';'
+
+    if (this.vertical) {
+      // 竖排：8 个整行大按钮。间距用 layout 给的（比横排小，否则挤不下）
+      this.vBtnStyle = 'width:' + p(wideW) + ';height:' + p(btnH) +
+        ';border-radius:' + p(ri(btnH / 2)) + ';margin-bottom:' + p(gap) + ';'
+      this.vBtnQuitStyle = 'width:' + p(wideW) + ';height:' + p(btnH) +
+        ';border-radius:' + p(ri(btnH / 2)) + ';'
+    } else {
+      this.btnStyle = 'height:' + p(btnH) + ';border-radius:' + p(ri(btnH / 2)) + ';'
+      this.btnWideStyle = 'width:' + p(btnW) + ';'
+      this.rowStyle = 'width:' + p(rowW) + ';'
+      this.smallStyle = 'width:' + p(smallW) + ';height:' + p(smallH) +
+        ';border-radius:' + p(ri(smallH / 2)) + ';'
+    }
+  },
+
+  refresh() {
+    loadAutoSave((d) => {
+      if (!d || d.magic !== 'yurite-1' || !d.pc) {
+        this.hasAuto = false
+        this.autoText = ''
+        return
+      }
+      this.autoText = '第' + ((d.chapter || 0) + 1) + '章'
+      this.hasAuto = true
+    })
+  },
+
+  ban() {},
+  start() { router.push({ uri: 'pages/game' }) },
+  resume() { router.push({ uri: 'pages/game', params: { auto: '1' } }) },
+  openSaves() { router.push({ uri: 'pages/saves', params: { mode: 'load' } }) },
+  openChapters() { router.push({ uri: 'pages/chapters' }) },
+  openCg() { router.push({ uri: 'pages/cg' }) },
+  openSettings() { router.push({ uri: 'pages/settings' }) },
+  openAbout() { router.push({ uri: 'pages/about' }) },
+  quit() { this.$app.exit() }
+}
+</script>

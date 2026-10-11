@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+sign/
+*.rpk
+.temp_*/
+
+# 占位内容不进仓库 —— 由 tools/gen_demo.py 生成（换成你自己的素材时同理）
+# 这样仓库里只有引擎，clone 后先跑一次 npm run demo
+src/common/img/
+src/common/story/
+src/common/home.png
+src/common/icon.png
+src/common/assets.js
+src/common/cglist.js
+layout.json

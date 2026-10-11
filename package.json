@@ -1,0 +1,23 @@
+{
+  "name": "yurite-band-galgame-engine",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Yurite —— 手环 Galgame 引擎。一份代码适配各种形状的穿戴屏，只含引擎不含素材。",
+  "scripts": {
+    "demo": "python tools/gen_demo.py .",
+    "build": "node tools/build.js --profile pro",
+    "build:std": "node tools/build.js --profile std",
+    "build:watch": "node tools/build.js --profile watch",
+    "all": "node tools/build.js --profile pro all",
+    "test": "node tools/test_layout.mjs",
+    "check": "node tools/test_layout.mjs && python tools/check_dup.py",
+    "layout": "node tools/dump_layout.mjs layout.json"
+  },
+  "devDependencies": {
+    "aiot-toolkit": "2.0.5",
+    "@aiot-toolkit/jsc": "^1.0.9"
+  },
+  "browserslist": [
+    "chrome 65"
+  ]
+}

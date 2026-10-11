@@ -1,0 +1,415 @@
+<template>
+  <div class="page" style="{{pageStyle}}" onswipe="ban">
+    <text class="title">设置</text>
+
+    <!-- 字体大小 -->
+    <text class="slabel" style="{{labStyle0}}">字体大小</text>
+    <div class="step" style="{{mStyle0}}" onclick="decSize" onswipe="ban"><text class="step-t" style="{{stepFontStyle}}">−</text></div>
+    <text class="sval" style="{{vStyle0}}">{{sizeText}}</text>
+    <div class="step" style="{{pStyle0}}" onclick="incSize" onswipe="ban"><text class="step-t" style="{{stepFontStyle}}">＋</text></div>
+    <slider class="sld" style="{{kStyle0}}" min="14" max="30" step="1" value="{{sizeIni}}" onchange="onSize"></slider>
+
+    <!-- 播放速度 -->
+    <text class="slabel" style="{{labStyle1}}">播放速度</text>
+    <div class="step" style="{{mStyle1}}" onclick="decSpeed" onswipe="ban"><text class="step-t" style="{{stepFontStyle}}">−</text></div>
+    <text class="sval" style="{{vStyle1}}">{{speedText}}</text>
+    <div class="step" style="{{pStyle1}}" onclick="incSpeed" onswipe="ban"><text class="step-t" style="{{stepFontStyle}}">＋</text></div>
+    <slider class="sld" style="{{kStyle1}}" min="0" max="120" step="1" value="{{speedIni}}" onchange="onSpeed"></slider>
+
+    <!-- 自动播放速度 -->
+    <text class="slabel" style="{{labStyle2}}">自动播放速度</text>
+    <div class="step" style="{{mStyle2}}" onclick="decAuto" onswipe="ban"><text class="step-t" style="{{stepFontStyle}}">−</text></div>
+    <text class="sval" style="{{vStyle2}}">{{autoText}}</text>
+    <div class="step" style="{{pStyle2}}" onclick="incAuto" onswipe="ban"><text class="step-t" style="{{stepFontStyle}}">＋</text></div>
+    <slider class="sld" style="{{kStyle2}}" min="0" max="200" step="1" value="{{autoIni}}" onchange="onAuto"></slider>
+
+    <!-- 屏幕常亮（走 @system.brightness 的 setKeepScreenOn） -->
+    <text class="slabel" style="{{labStyle3}}">屏幕常亮</text>
+    <div class="fastrow" style="{{pillRowStyle3}}">
+      <text class="{{$item.cls}}" style="{{$item.st}}" for="{{rowKeep}}" tid="k" onclick="pickKeep($idx)" onswipe="ban">{{$item.t}}</text>
+    </div>
+
+    <!-- 长按隐藏界面（关掉之后长按不再隐藏，用来防误触） -->
+    <text class="slabel" style="{{labStyle4}}">长按隐藏界面</text>
+    <div class="fastrow" style="{{pillRowStyle4}}">
+      <text class="{{$item.cls}}" style="{{$item.st}}" for="{{rowLp}}" tid="p" onclick="pickLp($idx)" onswipe="ban">{{$item.t}}</text>
+    </div>
+
+    <text class="hint" style="{{hintStyle1}}">{{hint1}}</text>
+    <text class="hint" style="{{hintStyle2}}">{{hint2}}</text>
+
+    <!-- 实时预览 -->
+    <div class="pv" style="{{pvBoxStyle}}">
+      <text class="pv-name" style="{{pvNameStyle}}">林曦</text>
+      <text class="pv-line" style="{{pvStyle}}">想成为Galgame领域大神！！！</text>
+    </div>
+
+    <div class="row" style="{{rowStyle}}">
+      <div class="btn" style="{{btnStyle}}" onclick="reset" onswipe="ban"><text class="btn-t" style="{{btnFontStyle}}">重置</text></div>
+      <div class="btn" style="{{btnStyle}}" onclick="back" onswipe="ban"><text class="btn-t" style="{{btnFontStyle}}">返回</text></div>
+    </div>
+
+    <text class="dbg" if="{{dbg}}">{{dbg}}</text>
+  </div>
+</template>
+
+<style>
+  /* ⚠️ 下面写死的 top / height 只是**内联样式没生效时的兜底**（= 手环 9 Pro 的值）。
+     真正的纵向几何由 common/layout.js 按运行时探到的屏幕比例算出，见 applyGeometry()。
+     336×480 上两者逐像素相同，Pro 的观感不变。
+
+     本页的版面分两截：上面 5 行设置项 + 两行提示是**贴顶**的固定内容，
+     下面的预览框和按钮则**贴底** —— 这样在 336×824/858 的高屏上，
+     设置项仍在顶部随手可点，按钮仍贴在手最容易够到的底部，
+     而不是全部挤在屏幕上半部分。 */
+  .page { width: 336px; height: 480px; background-color: #14101a; position: relative; }
+  .title { position: absolute; top: 4px; left: 0px; width: 336px; text-align: center;
+           font-size: 21px; color: #ffd8e6; font-weight: bold; }
+
+  /* 5 行设置：3 行「标签+步进+滑块」+ 2 行开关（屏幕常亮 / 长按隐藏界面）。
+     快进**不在这里** —— 它放在阅读菜单里（阅读时随手开关比翻到设置页方便）。 */
+  .slabel { position: absolute; left: 14px; font-size: 16px; color: #cfc2cb; }
+  .l1 { top: 34px; } .l2 { top: 98px; } .l3 { top: 162px; }
+  .l4 { top: 228px; } .l5 { top: 262px; }
+
+  /* − / ＋ 步进按钮：滑块万一不生效时的保底操作 */
+  .step { position: absolute; width: 32px; height: 28px; border-radius: 14px;
+          background-color: #32243a; align-items: center; justify-content: center; }
+  .step-t { font-size: 18px; color: #ffffff; }
+  .m1 { left: 196px; top: 30px; } .p1 { left: 286px; top: 30px; }
+  .m2 { left: 196px; top: 94px; } .p2 { left: 286px; top: 94px; }
+  .m3 { left: 196px; top: 158px; } .p3 { left: 286px; top: 158px; }
+
+  .sval { position: absolute; left: 232px; width: 50px; text-align: center;
+          font-size: 15px; color: #ffb3cd; }
+  .v1 { top: 35px; } .v2 { top: 99px; } .v3 { top: 163px; }
+
+  .sld { position: absolute; left: 14px; width: 308px; height: 32px; }
+  .k1 { top: 60px; } .k2 { top: 124px; } .k3 { top: 188px; }
+
+  .fastrow { position: absolute; top: 226px; left: 228px; flex-direction: row; }
+  .lprow { top: 260px; }
+  .pill { width: 44px; height: 30px; border-radius: 15px; background-color: #2c2133;
+          align-items: center; justify-content: center; margin-left: 6px;
+          font-size: 15px; color: #cbbcc6; }
+  .pill-on { width: 44px; height: 30px; border-radius: 15px; background-color: #b95079;
+             align-items: center; justify-content: center; margin-left: 6px;
+             font-size: 15px; color: #ffffff; }
+
+  .hint { position: absolute; left: 14px; width: 308px; font-size: 12px;
+          color: #8b7f89; lines: 1; }
+  .h1 { top: 296px; }
+  .h2 { top: 310px; }
+
+  /* 预览框贴底：top = 设计高 - 154（= 按钮行 40 + 底边距 20 + 间距 6 + 框高 88） */
+  .pv { position: absolute; top: 326px; left: 12px; width: 312px; height: 88px;
+        background-color: rgba(18, 13, 19, 0.92); border-radius: 14px; }
+  .pv-name { position: absolute; top: 4px; left: 12px; color: #ffd8e6; font-weight: bold; }
+  .pv-line { position: absolute; top: 36px; left: 12px; width: 290px; color: #ffffff; lines: 1; }
+
+  /* 按钮行贴底：top = 设计高 - 60（= 按钮高 40 + 底边距 20） */
+  .row { position: absolute; top: 420px; left: 50px; width: 236px;
+         flex-direction: row; justify-content: space-between; }
+  .btn { height: 40px; border-radius: 20px; background-color: #32243a;
+         align-items: center; justify-content: center; }
+  .btn-half { width: 114px; }
+  .btn-t { font-size: 18px; color: #ffffff; }
+
+  .dbg { position: absolute; top: 2px; left: 6px; width: 150px; font-size: 11px;
+         color: #6d6270; lines: 2; }
+</style>
+
+<script>
+import router from '@system.router'
+import prompt from '@system.prompt'
+import {
+  DEFAULT_SETTINGS, SIZE_MIN, SIZE_MAX, SPEED_MIN, SPEED_MAX, AUTO_MIN, AUTO_MAX,
+  normalizeSettings, loadSettings, saveSettings
+} from '../../common/reader.js'
+import { currentLayout, onLayoutReady } from '../../common/geo.js'
+
+const AUTO_STEP = 10
+
+// 贴底那两块的高度（见 CSS 里的注释）。设置项本身全在顶部，纵向位置写死不变。
+// 预览框高 / 按钮行高 / 按钮离屏幕底 —— 这些在 2.4 里是本文件的常量，
+// 自适应之后由 common/layout.js 按屏幕比例算（stPvH / stBtnH / stBtnBottom），
+// 本文件不再需要它们。
+// 参考值（H=480 的老版式）：PV_H 88 / ROW_H 40 / ROW_BOTTOM 20 / PV_GAP 6。
+
+export default {
+  // 统一用 protected，不要用 data（两者不能共存，运行时会抛错）
+  protected: {
+    // 滑块初值：只在载入时设一次，之后不再跟着实时值走。
+    // 若把 value 绑成实时值，拖动时框架会先按旧值重渲染、把滑块弹回去，
+    // 看起来就是「划了没反应」。
+    sizeIni: DEFAULT_SETTINGS.size,
+    speedIni: DEFAULT_SETTINGS.speed,
+    autoIni: DEFAULT_SETTINGS.autoMs,
+
+    sizeText: '',
+    speedText: '',
+    autoText: '',
+    rowKeep: [],
+    rowLp: [],
+    hint1: '',
+    hint2: '',
+    pvStyle: 'font-size: 20px; line-height: 24px;',
+    pvNameStyle: 'font-size: 18px;',
+    dbg: '',
+
+    // —— 自适应几何：由 common/layout.js 按屏幕实际尺寸算出（设计坐标，宽恒 336）
+    lay: currentLayout(),
+    // —— 自适应几何：由 common/layout.js 按屏幕实际尺寸算出（设计坐标，宽恒 336）。
+    // 5 行设置项、提示、预览框、按钮行的位置与尺寸全都走内联 style ——
+    // 设置页在标准版（设计高 824）上如果只把预览和按钮贴底，中间会空出一大片。
+    lay: currentLayout(),
+    pageStyle: '',
+    labStyle0: '', labStyle1: '', labStyle2: '', labStyle3: '', labStyle4: '',
+    mStyle0: '', mStyle1: '', mStyle2: '',
+    pStyle0: '', pStyle1: '', pStyle2: '',
+    vStyle0: '', vStyle1: '', vStyle2: '',
+    kStyle0: '', kStyle1: '', kStyle2: '',
+    pillRowStyle3: '', pillRowStyle4: '', pillStyle: '',
+    hintStyle1: '', hintStyle2: '',
+    stepFontStyle: '', btnFontStyle: '', btnStyle: '',
+    pvBoxStyle: '', rowStyle: ''
+  },
+
+  onInit() {
+    // 自适应几何：先用当前已知的屏幕尺寸排一次，异步探测回来后再排一次。
+    // 放最前面，后面依赖几何的初始化才能用上。
+    this.applyGeometry()
+    onLayoutReady(() => { this.applyGeometry() })
+
+    this.settings = DEFAULT_SETTINGS
+    this.saveTimer = null
+    this.lockTap = 0
+    loadSettings((s) => {
+      this.settings = s
+      // 初值只在这里赋一次
+      this.sizeIni = s.size
+      this.speedIni = s.speed
+      this.autoIni = s.autoMs
+      this.refresh()
+    })
+  },
+
+  onDestroy() {
+    if (this.saveTimer) { clearTimeout(this.saveTimer); this.saveTimer = null }
+  },
+
+  // ---------------------------------------------------------------- 自适应几何
+  // Vela 的 CSS 是静态的，屏幕尺寸却只有运行时才知道（而且异步），
+  // 所以纵向几何只能走内联 style —— 这是"一份代码适配多型号"的关键。
+  // 本页只有贴底的两块需要动：预览框与按钮行。
+  applyGeometry() {
+    this.lay = currentLayout()
+    const L = this.lay
+    const p = (v) => v + 'px'
+    const ri = (v) => Math.round(v)
+
+    // ⚠️ 用视口百分比，**不要**用算出来的 W/H：
+    // 一旦引擎算的尺寸和运行时真实视口不同源，页面就会被当成可滚动内容
+    // （红米手表上表现为「界面能上下滑」）。100% 相对的是视口，与数值无关。
+    this.pageStyle = 'width:100%;height:100%;'
+
+    // ---- 设置项：5 行的纵向位置与各控件尺寸都由 layout 按屏高算好
+    // 老版式在 H=480 时这些值与原值逐个相同（tools/test_layout.mjs 会核对）。
+    const labFont = ri(16 * L.settFont)
+    const valFont = ri(15 * L.settFont)
+    for (let i = 0; i < 3; i++) {
+      const top = L.stRowTop[i]
+      this['labStyle' + i] = 'top:' + p(top) + ';font-size:' + p(labFont) + ';'
+      // 步进按钮比标签高一点（老版式：标签 34 -> 步进 30）
+      const st = top - ri(4 * L.settScale)
+      this['mStyle' + i] = 'left:' + p(L.stMinus) + ';top:' + p(st) +
+        ';width:' + p(L.stStepW) + ';height:' + p(L.stStepH) +
+        ';border-radius:' + p(ri(L.stStepH / 2)) + ';'
+      this['pStyle' + i] = 'left:' + p(L.stPlus) + ';top:' + p(st) +
+        ';width:' + p(L.stStepW) + ';height:' + p(L.stStepH) +
+        ';border-radius:' + p(ri(L.stStepH / 2)) + ';'
+      this['vStyle' + i] = 'left:' + p(L.stVal) + ';top:' + p(top + ri(1 * L.settScale)) +
+        ';width:' + p(L.stValW) + ';font-size:' + p(valFont) + ';'
+      this['kStyle' + i] = 'top:' + p(top + ri(26 * L.settScale)) +
+        ';height:' + p(L.stSldH) + ';'
+    }
+
+    // ---- 两个开关行（药丸）：靠右排，位置由 layout 反推，不会戳出屏幕
+    for (const i of [3, 4]) {
+      const top = L.stRowTop[i]
+      this['labStyle' + i] = 'top:' + p(top) + ';font-size:' + p(labFont) + ';'
+      this['pillRowStyle' + i] = 'left:' + p(L.stPillLeft) + ';top:' +
+        p(top - ri(2 * L.settScale)) + ';'
+    }
+    // 药丸自己的尺寸也得给（CSS 里的 44x30 是兜底值）
+    const pillSt = 'width:' + p(L.stPillW) + ';height:' + p(L.stPillH) +
+      ';border-radius:' + p(ri(L.stPillH / 2)) + ';margin-left:' + p(L.stPillGap) +
+      ';font-size:' + p(valFont) + ';'
+    this.pillStyle = pillSt
+
+    // ---- 提示 / 预览框 / 按钮行
+    const hintFont = ri(12 * L.settFont)
+    this.hintStyle1 = 'top:' + p(L.stHint1) + ';font-size:' + p(hintFont) + ';'
+    this.hintStyle2 = 'top:' + p(L.stHint2) + ';font-size:' + p(hintFont) + ';'
+
+    this.pvBoxStyle = 'top:' + p(L.stPvTop) + ';width:' + p(L.W - 24) +
+      ';height:' + p(L.stPvH) + ';'
+    this.pvNameStyle = 'top:' + p(ri(4 * L.settScale)) + ';font-size:' +
+      p(ri(18 * L.settFont)) + ';'
+    // 正文预览的行高跟着字号走，这里用当前设置的字号
+    const pvSize = (this.settings && this.settings.size) || 20
+    this.pvStyle = 'top:' + p(ri(36 * L.settScale)) + ';font-size:' +
+      p(ri(pvSize * L.settScale)) + ';line-height:' +
+      p(ri((pvSize + 6) * L.settScale)) + ';'
+
+    const gap = ri(12 * L.settScale)
+    const bw = ri((L.stBtnW - gap) / 2)
+    this.rowStyle = 'left:' + p(ri((L.W - L.stBtnW) / 2)) + ';top:' + p(L.stBtnTop) +
+      ';width:' + p(L.stBtnW) + ';'
+    this.btnStyle = 'width:' + p(bw) + ';height:' + p(L.stBtnH) +
+      ';border-radius:' + p(ri(L.stBtnH / 2)) + ';'
+    this.btnFontStyle = 'font-size:' + p(ri(18 * L.settFont)) + ';'
+    this.stepFontStyle = 'font-size:' + p(ri(18 * L.settFont)) + ';'
+  },
+
+  refresh() {
+    const s = this.settings
+    // 预览框里的字号跟着设置走，所以设置变了要重算一次几何
+    // （applyGeometry 里会用 this.settings.size 算预览字号）
+    this.applyGeometry()
+    this.sizeText = '' + s.size
+    this.speedText = s.speed === 0 ? '瞬间' : ('' + s.speed)
+    this.autoText = s.autoMs === 0 ? '关闭' : ('' + s.autoMs)
+
+    // 药丸的尺寸也要内联给（CSS 里的 44x30 只是兜底值），
+    // 否则标准版上药丸还是老尺寸、和放大的行距对不上
+    this.rowKeep = ['关', '开'].map((t, i) => ({
+      t: t, cls: (!!s.keepOn === !!i) ? 'pill-on' : 'pill', st: this.pillStyle
+    }))
+    this.rowLp = ['关', '开'].map((t, i) => ({
+      t: t, cls: (!!s.longpress === !!i) ? 'pill-on' : 'pill', st: this.pillStyle
+    }))
+
+    this.hint1 = '字号 ' + SIZE_MIN + '~' + SIZE_MAX + ' px，显示的数字就是 px'
+    this.hint2 = '播放速度＝每字毫秒（0 为瞬间）；自动播放速度＝每句停留毫秒（0 为关闭）'
+    this.pvStyle = 'font-size: ' + s.size + 'px; line-height: ' + (s.size + 6) + 'px;'
+    this.pvNameStyle = 'font-size: ' + Math.max(16, s.size - 2) + 'px;'
+  },
+
+  apply(patch) {
+    this.settings = normalizeSettings(Object.assign({}, this.settings, patch))
+    this.refresh()
+    if (this.saveTimer) clearTimeout(this.saveTimer)
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null
+      saveSettings(this.settings)
+    }, 300)
+  },
+
+  flush() {
+    if (this.saveTimer) { clearTimeout(this.saveTimer); this.saveTimer = null }
+    saveSettings(this.settings)
+  },
+
+  // 把事件对象里所有数字字段都挖出来，优先取名字带 value 的；
+  // 同时写到屏上的 dbg 与 console，便于从固件日志确认 slider 到底给的是什么。
+  readSlider(e) {
+    const cands = []
+    const scan = (o, pre) => {
+      if (!o || typeof o !== 'object') return
+      for (const k in o) {
+        const v = o[k]
+        if (typeof v === 'number' && isFinite(v)) cands.push(pre + k + '=' + v)
+      }
+    }
+    if (e === null || e === undefined) {
+      this.dbg = 'slider 事件为空'
+      return null
+    }
+    if (typeof e === 'number') return e
+    scan(e, '')
+    scan(e.detail, 'detail.')
+    scan(e.target, 'target.')
+    let pick = -1
+    for (let i = 0; i < cands.length; i++) {
+      if (cands[i].indexOf('value') >= 0) { pick = i; break }
+    }
+    if (pick < 0 && cands.length) pick = 0
+    this.dbg = cands.join(' ') || '事件里没有数字字段'
+    try { console.log('[Yurite] slider change: ' + this.dbg) } catch (err) {}
+    if (pick < 0) return null
+    return Number(cands[pick].split('=')[1])
+  },
+
+  ban() {},
+  lock() { this.lockTap = Date.now() },
+
+  // ---- 滑块
+  onSize(e) {
+    const v = this.readSlider(e)
+    if (v === null) return
+    this.apply({ size: v })
+  },
+  onSpeed(e) {
+    const v = this.readSlider(e)
+    if (v === null) return
+    this.apply({ speed: v })
+  },
+  onAuto(e) {
+    const v = this.readSlider(e)
+    if (v === null) return
+    const patch = { autoMs: v }
+    if (v > 0) patch.fast = false     // 自动播放与快速播放互斥
+    this.apply(patch)
+  },
+
+  // ---- 步进按钮（不依赖 slider，一定能用）
+  step(field, delta, lo, hi) {
+    this.lock()
+    const cur = this.settings[field] || 0
+    let v = cur + delta
+    if (v < lo) v = lo
+    if (v > hi) v = hi
+    const patch = {}
+    patch[field] = v
+    if (field === 'autoMs' && v > 0) patch.fast = false
+    this.apply(patch)
+  },
+
+  decSize() { this.step('size', -1, SIZE_MIN, SIZE_MAX) },
+  incSize() { this.step('size', 1, SIZE_MIN, SIZE_MAX) },
+  decSpeed() { this.step('speed', -2, SPEED_MIN, SPEED_MAX) },
+  incSpeed() { this.step('speed', 2, SPEED_MIN, SPEED_MAX) },
+  decAuto() { this.step('autoMs', -AUTO_STEP, AUTO_MIN, AUTO_MAX) },
+  incAuto() { this.step('autoMs', AUTO_STEP, AUTO_MIN, AUTO_MAX) },
+
+  pickKeep(i) {
+    this.lock()
+    this.apply({ keepOn: i === 1 })
+    this.flush()
+  },
+
+  pickLp(i) {
+    this.lock()
+    this.apply({ longpress: i === 1 })
+    this.flush()
+  },
+
+  reset() {
+    this.lock()
+    this.settings = normalizeSettings(DEFAULT_SETTINGS)
+    this.sizeIni = this.settings.size
+    this.speedIni = this.settings.speed
+    this.autoIni = this.settings.autoMs
+    this.refresh()
+    this.flush()
+    prompt.showToast({ message: '已恢复默认设置' })
+  },
+
+  back() {
+    this.lock()
+    this.flush()
+    router.back()
+  }
+}
+</script>

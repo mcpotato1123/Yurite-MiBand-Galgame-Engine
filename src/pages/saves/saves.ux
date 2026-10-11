@@ -1,0 +1,228 @@
+<template>
+  <div class="page" style="{{pageStyle}}" onswipe="ban">
+    <text class="title">{{mode === 'save' ? '保存进度' : '读取进度'}}</text>
+    <text class="sub">{{mode === 'save' ? '点按覆盖 · 长按删除' : '点按读取 · 长按删除'}}</text>
+
+    <list class="lst" style="{{listStyle}}" bounces="true" onswipe="ban">
+      <list-item class="item" for="{{rows}}" tid="rid" onclick="pick($idx)" onlongpress="askDelete($idx)" onswipe="ban">
+        <div class="card">
+          <div class="card-l">
+            <text class="card-name">{{$item.name}}</text>
+            <text class="card-info">{{$item.info}}</text>
+          </div>
+          <text class="card-tag">{{$item.tag}}</text>
+        </div>
+      </list-item>
+    </list>
+
+    <div class="back" style="{{backStyle}}" onclick="back" onswipe="ban"><text class="btn-t">返回</text></div>
+
+    <div class="scrim" style="{{scrimStyle}}" if="{{confirmIdx >= 0}}">
+      <div class="dialog" style="{{dialogStyle}}">
+        <text class="dg-title">删除存档？</text>
+        <text class="dg-sub">此操作无法撤销</text>
+        <div class="dg-row">
+          <div class="dg-btn" onclick="cancelDelete" onswipe="ban"><text class="dg-t">取消</text></div>
+          <div class="dg-btn dg-danger" onclick="doDelete" onswipe="ban"><text class="dg-t">删除</text></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style>
+  /* ⚠️ 下面写死的 top / height 只是**内联样式没生效时的兜底**（= 手环 9 Pro 的值）。
+     真正的纵向几何由 common/layout.js 按运行时探到的屏幕比例算出，见 applyGeometry()。
+     336×480 上两者逐像素相同，Pro 的观感不变。 */
+  .page { width: 336px; height: 480px; background-color: #14101a; position: relative; }
+  .title { position: absolute; top: 12px; left: 0px; width: 336px; text-align: center;
+           font-size: 24px; color: #ffd8e6; font-weight: bold; }
+  .sub { position: absolute; top: 44px; left: 0px; width: 336px; text-align: center;
+         font-size: 14px; color: #9c8f9b; }
+
+  /* 同章节页：改用 <list>，条目放大到 86px，一屏 4 条。
+     高度不能写死 358 —— 那是 480 高度下的剩余空间。列表上下各有一块固定内容
+     （标题区 68、返回按钮区 54），所以可视高 = 设计高 - 122，
+     336×824 上就能一屏显示 8 条，而不是下面空一大片。
+     Vela 的硬性要求：list 必须给显式宽高，所以宽高两个都写。 */
+  .lst { position: absolute; top: 68px; left: 0px; width: 336px; height: 358px; }
+
+  .item { width: 336px; height: 86px; }
+  .card { width: 312px; height: 74px; margin-left: 12px; margin-top: 6px; border-radius: 16px;
+          background-color: #241c2c; flex-direction: row; align-items: center;
+          padding-left: 16px; padding-right: 16px; }
+  .card-l { flex-direction: column; width: 232px; }
+  .card-name { font-size: 21px; color: #ffe6ef; lines: 1; }
+  .card-info { font-size: 14px; color: #9c8f9b; margin-top: 3px; lines: 1; }
+  .card-tag { font-size: 15px; color: #cf9ec0; width: 44px; text-align: right; }
+
+  /* 返回按钮贴底：top = 设计高 - 48（= 按钮高 40 + 底边距 8） */
+  .back { position: absolute; top: 432px; left: 50px; width: 236px; height: 40px;
+          border-radius: 20px; background-color: #32243a;
+          align-items: center; justify-content: center; }
+  .btn-t { font-size: 19px; color: #ffffff; }
+
+  /* 遮罩必须铺满整个设计空间，否则高屏上会露出下半截页面 */
+  .scrim { position: absolute; top: 0px; left: 0px; width: 336px; height: 480px;
+           background-color: rgba(0, 0, 0, 0.72); align-items: center; justify-content: center; }
+  /* 弹窗纵向居中：top = (设计高 - 弹窗高 170) / 2 */
+  .dialog { width: 250px; height: 170px; border-radius: 18px; background-color: #241c2c;
+            flex-direction: column; align-items: center; padding-top: 20px; }
+  .dg-title { font-size: 21px; color: #ffe6ef; font-weight: bold; }
+  .dg-sub { font-size: 14px; color: #9c8f9b; margin-top: 6px; margin-bottom: 18px; }
+  .dg-row { width: 210px; flex-direction: row; justify-content: space-between; }
+  .dg-btn { width: 98px; height: 40px; border-radius: 20px; background-color: #32243a;
+            align-items: center; justify-content: center; }
+  .dg-danger { background-color: #a8355a; }
+  .dg-t { font-size: 18px; color: #ffffff; }
+</style>
+
+<script>
+import router from '@system.router'
+import prompt from '@system.prompt'
+import storage from '@system.storage'
+import { MAX_SLOTS, loadSaves, saveSaves, loadAutoSave, writeJSON } from '../../common/reader.js'
+import { currentLayout, onLayoutReady } from '../../common/geo.js'
+
+const SAVE_MAGIC = 'yurite-band-1'
+
+// 列表上下两块固定内容的高度：标题区（副标题底 58 + 10 间距）与返回按钮区。
+// 返回按钮高 40、贴底留 8、列表底再留 6 的缝 → 下固定块 = 54。
+// 列表高度 = 设计高 - 这两块，屏越高能显示的行越多。
+const LIST_TOP = 68
+const LIST_BOTTOM = 54
+// 返回按钮：高 40、贴底留 8
+const BACK_H = 40
+const BACK_GAP = 8
+// 删除确认弹窗高 170，纵向居中
+const DIALOG_H = 170
+
+export default {
+  // ⚠️ data 不能与 protected 同时存在（运行时会抛错并导致页面 VM 创建失败），
+  // 所以路由参数和界面状态都放进 protected
+  protected: {
+    mode: 'load',
+    rows: [],
+    confirmIdx: -1,
+
+    // —— 自适应几何：由 common/layout.js 按屏幕实际尺寸算出（设计坐标，宽恒 336）
+    lay: currentLayout(),
+    pageStyle: '', listStyle: '', backStyle: '', scrimStyle: '', dialogStyle: ''
+  },
+
+  // 非绑定状态在 onInit 里初始化
+  onInit() {
+    // 自适应几何：先用当前已知的屏幕尺寸排一次，异步探测回来后再排一次。
+    // 放最前面，后面依赖几何的初始化才能用上。
+    this.applyGeometry()
+    onLayoutReady(() => { this.applyGeometry() })
+
+    this.slots = []
+    this.auto = null
+    this.pending = null
+    this.suppress = false
+    loadSaves((list) => { this.slots = Array.isArray(list) ? list : [] })
+    loadAutoSave((d) => { this.auto = d })
+    storage.get({
+      key: 'pendingSave',
+      default: '',
+      success: (v) => {
+        if (v) {
+          try { this.pending = JSON.parse(v) } catch (e) { this.pending = null }
+        }
+        storage.delete({ key: 'pendingSave' })
+        this.render()
+      },
+      fail: () => this.render()
+    })
+  },
+
+  // ---------------------------------------------------------------- 自适应几何
+  // Vela 的 CSS 是静态的，屏幕尺寸却只有运行时才知道（而且异步），
+  // 所以纵向几何只能走内联 style —— 这是"一份代码适配多型号"的关键。
+  applyGeometry() {
+    this.lay = currentLayout()
+    const L = this.lay
+    const p = (v) => v + 'px'
+
+    // ⚠️ 用视口百分比，**不要**用算出来的 W/H：
+    // 一旦引擎算的尺寸和运行时真实视口不同源，页面就会被当成可滚动内容
+    // （红米手表上表现为「界面能上下滑」）。100% 相对的是视口，与数值无关。
+    this.pageStyle = 'width:100%;height:100%;'
+    // 列表可视高 = 设计高 - 上固定块 - 下固定块（必须显式给宽高，Vela 的硬性要求）
+    this.listStyle = 'width:' + p(L.W) + ';height:' + p(Math.max(86, L.H - LIST_TOP - LIST_BOTTOM)) + ';'
+    this.backStyle = 'top:' + p(L.H - BACK_H - BACK_GAP) + ';'
+    this.scrimStyle = 'width:' + p(L.W) + ';height:' + p(L.H) + ';'
+    this.dialogStyle = 'top:' + p(Math.max(0, Math.round((L.H - DIALOG_H) / 2))) + ';'
+  },
+
+  render() {
+    const rows = []
+    let ai = '（空）'
+    if (this.auto && this.auto.magic === SAVE_MAGIC) ai = this.describe(this.auto)
+    rows.push({ name: '自动存档', info: ai, tag: this.mode === 'save' ? '自动' : '读取' })
+
+    for (let i = 0; i < MAX_SLOTS; i++) {
+      const s = this.slots[i]
+      rows.push({
+        name: '存档 ' + (i + 1),
+        info: s && s.magic === SAVE_MAGIC ? this.describe(s) : '（空）',
+        tag: this.mode === 'save' ? '覆盖' : (s ? '读取' : '空')
+      })
+    }
+    this.rows = rows
+  },
+
+  describe(s) {
+    const t = s.text || ''
+    return '第' + ((s.chapter || 0) + 1) + '章 · ' + (t.length > 12 ? t.slice(0, 12) + '…' : t)
+  },
+
+  ban() {},
+
+  pick(idx) {
+    if (this.suppress) { this.suppress = false; return }
+    if (idx === 0) {
+      if (this.mode !== 'load') { prompt.showToast({ message: '自动存档不可覆盖' }); return }
+      if (!this.auto || this.auto.magic !== SAVE_MAGIC) { prompt.showToast({ message: '暂无自动存档' }); return }
+      router.replace({ uri: 'pages/game', params: { auto: '1' } })
+      return
+    }
+    const slot = idx - 1
+    if (this.mode === 'save') {
+      if (!this.pending) { prompt.showToast({ message: '没有可保存的进度' }); return }
+      const list = this.slots.slice()
+      list[slot] = this.pending
+      this.slots = list
+      saveSaves(list, (ok) => {
+        prompt.showToast({ message: ok ? '已保存到存档 ' + (slot + 1) : '保存失败' })
+        this.render()
+      })
+      return
+    }
+    const s = this.slots[slot]
+    if (!s || s.magic !== SAVE_MAGIC) { prompt.showToast({ message: '该存档为空' }); return }
+    router.replace({ uri: 'pages/game', params: { load: String(slot) } })
+  },
+
+  askDelete(idx) {
+    if (idx === 0) { prompt.showToast({ message: '自动存档不可删除' }); return }
+    this.suppress = true
+    this.confirmIdx = idx
+  },
+
+  cancelDelete() { this.confirmIdx = -1 },
+
+  doDelete() {
+    const idx = this.confirmIdx
+    this.confirmIdx = -1
+    if (idx <= 0) return
+    const list = this.slots.slice()
+    list[idx - 1] = null
+    this.slots = list
+    saveSaves(list, () => this.render())
+  },
+
+  back() { router.back() }
+}
+</script>

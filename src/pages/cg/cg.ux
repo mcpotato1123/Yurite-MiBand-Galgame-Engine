@@ -1,0 +1,433 @@
+<template>
+  <!-- 根节点不挂 onswipe：那会把手势整个吃掉（2.3.1 上 CG 拖不动就是这个）。
+       需要接住滑动的那张图自己挂。 -->
+  <div class="page" style="{{pageStyle}}">
+    <text class="title">CG 鉴赏</text>
+    <text class="sub">已解锁 {{openCount}} / {{total}} 组 · 点按查看</text>
+
+    <list class="lst" style="{{listStyle}}" bounces="true" onswipe="ban">
+      <list-item class="item" for="{{rows}}" tid="gid" onclick="open($idx)" onswipe="ban">
+        <div class="card">
+          <image class="thumb" src="{{$item.th}}" if="{{$item.ok}}"></image>
+          <div class="lock" if="{{!$item.ok}}">
+            <text class="lock-t">?</text>
+          </div>
+          <text class="nm">{{$item.n}}</text>
+          <text class="st">{{$item.st}}</text>
+        </div>
+      </list-item>
+    </list>
+
+    <div class="back" style="{{backStyle}}" onclick="back" onswipe="ban"><text class="btn-t">返回</text></div>
+
+    <!-- 大图查看
+         CG 是一张完整 16:9 的宽图（854×480），比屏幕宽得多。
+         显示时靠 **touchmove 连续拖动** left 来看被裁掉的部分 ——
+         拖动是连续跟随手指的，不是一格一格跳。
+
+         ⚠️ .big 必须显式写 object-fit，否则 Vela 的 <image> 会按**原始尺寸**画，
+            结果只占屏幕左边一块、右边全黑（2.3.3 上就是这个现象）。
+
+         另外两条手势同时挂着做兜底：onswipe 与左右点击热区。
+         万一 touchmove 在某些固件上不派发，也还能看全图。 -->
+    <div class="viewer" style="{{viewerStyle}}" if="{{viewing}}">
+      <image class="big" style="{{cgStyle}}" src="{{bigSrc}}"
+             ontouchstart="onCgTouchStart" ontouchmove="onCgTouchMove"
+             ontouchend="onCgTouchEnd" ontouchcancel="onCgTouchEnd"
+             onswipe="onPanSwipe"></image>
+
+      <div class="tapzone zl" style="{{zlStyle}}" if="{{canLeft}}" onclick="panPrev" onswipe="ban"></div>
+      <div class="tapzone zr" style="{{zrStyle}}" if="{{canRight}}" onclick="panNext" onswipe="ban"></div>
+
+      <div class="vtop">
+        <text class="vname">{{vName}}</text>
+        <text class="vnum">{{pageNo}} / {{pageAll}}</text>
+      </div>
+
+      <div class="vclose" onclick="closeView" onswipe="ban"><text class="vclose-t">关闭</text></div>
+
+      <!-- 提示 + 位置条下面垫一层半透明底板。
+           CG 有的是浅色（白裙子那种），纯文字直接压上去几乎看不清 ——
+           做上架截图时发现的，不只是截图问题。 -->
+      <div class="hintplate" style="{{hintPlateStyle}}"></div>
+      <text class="vhint2" style="{{vHintStyle}}">按住画面左右拖动，看被裁掉的部分</text>
+      <!-- 位置指示：滑块宽度 = 屏幕宽/图宽，位置 = 当前看到哪一段。
+           既是给玩家的反馈，也是在"拖不动"时能一眼看出卡在哪儿的诊断手段。 -->
+      <div class="indtrack" style="{{indTrackStyle}}"><div class="thumb2" style="{{indStyle}}"></div></div>
+
+      <div class="vbar" style="{{vBarStyle}}" if="{{pageAll > 1}}">
+        <div class="vbtn" onclick="prev" onswipe="ban"><text class="vbtn-t">‹</text></div>
+        <text class="vhint">换一张差分</text>
+        <div class="vbtn" onclick="next" onswipe="ban"><text class="vbtn-t">›</text></div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style>
+  /* ⚠️ 下面写死的 top / height 只是**内联样式没生效时的兜底**（= 手环 9 Pro 的值）。
+     真正的纵向几何由 common/layout.js 按运行时探到的屏幕比例算出，见 applyGeometry()。
+     336×480 上两者逐像素相同，Pro 的观感不变。 */
+  .page { width: 336px; height: 480px; background-color: #14101a; position: relative; }
+  .title { position: absolute; top: 12px; left: 0px; width: 336px; text-align: center;
+           font-size: 24px; color: #ffd8e6; font-weight: bold; }
+  .sub { position: absolute; top: 44px; left: 0px; width: 336px; text-align: center;
+         font-size: 14px; color: #9c8f9b; }
+
+  /* 高度不能写死 358 —— 那是 480 高度下的剩余空间。列表上下各有一块固定内容
+     （标题区 68、返回按钮区 54），所以可视高 = 设计高 - 122，
+     336×824 上就能一屏显示 8 条，而不是下面空一大片。
+     Vela 的硬性要求：list 必须给显式宽高，所以宽高两个都写。 */
+  .lst { position: absolute; top: 68px; left: 0px; width: 336px; height: 358px; }
+
+  .item { width: 336px; height: 86px; }
+  .card { width: 312px; height: 74px; margin-left: 12px; margin-top: 6px; border-radius: 16px;
+          background-color: #241c2c; flex-direction: row; align-items: center;
+          padding-left: 10px; padding-right: 14px; }
+  /* object-fit 是防呆：Vela 的 <image> 默认按原始像素尺寸画，
+     源图尺寸万一和框不一致就会只占一块。现在两者都是 96x54，写上是保险。 */
+  .thumb { width: 96px; height: 54px; border-radius: 8px; object-fit: cover; }
+  .lock { width: 96px; height: 54px; border-radius: 8px; background-color: #191320;
+          align-items: center; justify-content: center; }
+  .lock-t { font-size: 26px; color: #4c4055; }
+  .nm { font-size: 21px; color: #ffe6ef; width: 154px; margin-left: 12px; lines: 1; }
+  .st { font-size: 14px; color: #9c8f9b; width: 36px; text-align: right; }
+
+  /* 返回按钮贴底：top = 设计高 - 48（= 按钮高 40 + 底边距 8） */
+  .back { position: absolute; top: 432px; left: 50px; width: 236px; height: 40px;
+          border-radius: 20px; background-color: #32243a;
+          align-items: center; justify-content: center; }
+  .btn-t { font-size: 19px; color: #ffffff; }
+
+  /* overflow:hidden 让比屏幕宽的图被裁在这个框里，靠 left 决定看哪一段 */
+  .viewer { position: absolute; top: 0px; left: 0px; width: 336px; height: 480px;
+            background-color: #000000; overflow: hidden; }
+  /* 兜底的 width 必须等于 tools/gen_assets.py 的 CG_W（npm run test 会核对）：
+     真机上这个值由内联 cgStyle 用 lay.cgW 覆盖，这里的 854 只是内联失效时的退路。
+     object-fit 也必须写 —— 不写的话 Vela 按原始尺寸画，只会占左边一块。 */
+  .big { position: absolute; top: 0px; left: 0px; width: 854px; height: 480px;
+         object-fit: fill; }
+
+  /* 点击翻页的保底热区：只占左右窄条，避开顶栏和底栏（高度由几何给出） */
+  .tapzone { position: absolute; top: 56px; width: 48px; height: 336px; }
+  .zl { left: 0px; }
+  /* 右侧热区贴右边：left = 设计宽 - 48 */
+  .zr { left: 288px; }
+
+  .vtop { position: absolute; top: 10px; left: 0px; width: 336px; flex-direction: row;
+          align-items: center; padding-left: 14px; padding-right: 88px; }
+  .vname { font-size: 16px; color: #ffe6ef; lines: 1; }
+  .vnum { font-size: 15px; color: #d8cbd2; }
+
+  .vclose { position: absolute; top: 10px; left: 262px; width: 64px; height: 34px;
+            border-radius: 17px; background-color: rgba(0, 0, 0, 0.62);
+            align-items: center; justify-content: center; }
+  .vclose-t { font-size: 17px; color: #ffe6ef; }
+
+  /* 提示区的半透明底板：浅色 CG 上纯文字看不清（贴底：设计高 - 96） */
+  .hintplate { position: absolute; top: 384px; left: 14px; width: 308px; height: 38px;
+               border-radius: 12px; background-color: rgba(0, 0, 0, 0.5); }
+
+  /* 提示放在底栏上方，别和底栏重叠（2.3.3 上 top:424 撞上了 top:428 的底栏）
+     贴底：设计高 - 90 */
+  .vhint2 { position: absolute; top: 390px; left: 0px; width: 336px; text-align: center;
+            font-size: 13px; color: rgba(232, 222, 230, 0.92); }
+
+  /* 位置指示条：轨道宽由 layout.js 给出（240），滑块宽度 = 轨道 × 屏幕宽/图宽
+     （336/854 ≈ 94，见 applyGeometry()）。贴在提示区下方、底栏上方。 */
+  .indtrack { position: absolute; top: 412px; left: 48px; width: 240px; height: 5px;
+              border-radius: 3px; background-color: rgba(255, 255, 255, 0.28); }
+  .thumb2 { position: absolute; top: 0px; left: 0px; width: 94px; height: 5px;
+            border-radius: 3px; background-color: #ffd8e6; }
+
+  /* 底栏贴底：top = 设计高 - 52 */
+  .vbar { position: absolute; top: 428px; left: 22px; width: 292px; height: 42px;
+          border-radius: 21px; background-color: rgba(0, 0, 0, 0.62);
+          flex-direction: row; align-items: center; justify-content: space-between;
+          padding-left: 6px; padding-right: 6px; }
+  .vbtn { width: 46px; height: 34px; border-radius: 17px; background-color: #32243a;
+          align-items: center; justify-content: center; }
+  .vbtn-t { font-size: 22px; color: #ffffff; }
+  .vhint { font-size: 14px; color: rgba(226, 214, 224, 0.8); }
+</style>
+
+<script>
+import router from '@system.router'
+import prompt from '@system.prompt'
+import { CGG } from '../../common/cglist.js'
+import { IMG } from '../../common/assets.js'
+import { loadSeen } from '../../common/reader.js'
+import { currentLayout, onLayoutReady } from '../../common/geo.js'
+
+// 查看器的固定尺寸部分。纵向位置全部由 common/layout.js 算出的设计高反推（贴底），
+// 336×480 上算出来的值与老版式写死的那些 top 逐像素相同。
+const TAP_TOP = 56            // 点击热区的上边（避开顶栏）
+const TAP_W = 48             // 热区宽度
+const TAP_BOTTOM = 88        // 热区下边离屏幕底（原版版式：底栏 42+10 再往上留 36）
+const BAR_H = 42             // 底栏（换差分）高
+const BAR_BOTTOM = 10        // 底栏离屏幕底
+const HINT_PLATE_H = 38      // 提示底板高，贴底 HINT_PLATE_BOTTOM
+const HINT_PLATE_BOTTOM = 96 // 48(底栏+间距) + 5(轨道) + 5 + 38
+const HINT_PLATE_GAP = 6     // 提示文字在提示底板内的上边距
+const TRACK_IN_PLATE = 28    // 位置指示条轨道在提示底板内的上边距（原版式 412-384）
+const TRACK_W = 240          // 位置指示条轨道宽（与 layout.js 的 R.cgTrack 一致）
+// ---------------------------------------------------------------- CG 拖动几何
+// 下面这几个值原来全是写死的常量，现在都按当前屏幕的几何现算：
+//   CG_PAN_RANGE = 图宽 - 屏宽（lay.cgRange，横向能拖出来的部分）
+//   CG_PAN_STEP  = 范围的三分之一（点击/滑动兜底时一次走多远）
+//   CG_DRAG_GAIN = 范围 / 屏宽的一半
+// 拖动放大倍数的分母是**手指的实际可用行程**：从屏幕中间起手，最多只能挪到边缘，
+// 也就是 336/2 = 168px，不是整个屏宽。而可拖范围在 pro 上是 518px，
+// 所以要 518/168 ≈ 3.08 才能一次划到底。
+//   之前用 1.8（按"整屏 336"算的），一次只能走 302px = 58%，
+//   真机上就表现为「只能拖一半」。这个 168 是很容易算错的地方。
+// 再乘一个 1.05 的余量：算出来的 3.08 是"手指正好从屏幕正中间起手"的临界值，
+// 差一点点就拖不到头；原版写死 3.2 也是留了余量的。多了会被 setPan 夹住，无害。
+const CG_DRAG_MARGIN = 1.05
+// 这些值现在每次 applyGeometry() 都重算，所以换到更宽/更窄的屏上也成立。
+let CG_PAN_RANGE = 0
+let CG_PAN_STEP = 0
+let CG_DRAG_GAIN = 1
+
+// 触摸事件的坐标字段各版本不统一，挨个试。
+// Vela 的 commonEvents 里有 touchstart/touchmove/touchend，但字段名没有文档。
+function readX(e) {
+  if (!e) return null
+  let p = null
+  if (e.touches && e.touches.length) p = e.touches[0]
+  else if (e.changedTouches && e.changedTouches.length) p = e.changedTouches[0]
+  else p = e
+  if (!p) return null
+  if (typeof p.clientX === 'number') return p.clientX
+  if (typeof p.pageX === 'number') return p.pageX
+  if (typeof p.x === 'number') return p.x
+  if (typeof p.offsetX === 'number') return p.offsetX
+  return null
+}
+
+function readDir(e) {
+  if (!e) return ''
+  if (typeof e.direction === 'string') return e.direction
+  if (e.detail && typeof e.detail.direction === 'string') return e.detail.direction
+  if (e.target && typeof e.target.direction === 'string') return e.target.direction
+  return ''
+}
+
+export default {
+  // 统一用 protected，不要用 data（两者不能共存，运行时会抛错）
+  protected: {
+    rows: [],
+    openCount: 0,
+    total: 0,
+    viewing: false,
+    bigSrc: '',
+    cgStyle: 'width: 854px; left: 0px;',
+    indStyle: 'width: 94px; left: 0px;',
+    canLeft: false,
+    canRight: true,
+    vName: '',
+    pageNo: 1,
+    pageAll: 1,
+
+    // —— 自适应几何：由 common/layout.js 按屏幕实际尺寸算出（设计坐标，宽恒 336）
+    lay: currentLayout(),
+    pageStyle: '', listStyle: '', backStyle: '', viewerStyle: '',
+    zlStyle: '', zrStyle: '',
+    hintPlateStyle: '', vHintStyle: '', indTrackStyle: '', vBarStyle: '',
+    // 滑块宽与轨道宽成对使用，setPan() 算滑块位置时要用
+    indW: 94, trackW: 240
+  },
+
+  onInit() {
+    // 自适应几何：先用当前已知的屏幕尺寸排一次，异步探测回来后再排一次。
+    // 放最前面，后面依赖几何的初始化才能用上。
+    this.applyGeometry()
+    onLayoutReady(() => {
+      this.applyGeometry()
+      // 几何变了 → 可拖范围/位置条宽度都变了，把当前这张重新夹一次并刷新滑块
+      if (this.viewing) this.setPan(this.cgLeft)
+    })
+
+    this.seen = {}
+    this.groups = CGG || []
+    this.curGroup = -1
+    this.curPage = 0
+    this.cgLeft = 0
+    this.touchX = null
+    this.touchLeft = 0
+    this.lockTap = 0
+    loadSeen((list) => {
+      for (let i = 0; i < list.length; i++) this.seen[list[i]] = 1
+      this.build()
+    })
+  },
+
+  // ---------------------------------------------------------------- 自适应几何
+  // Vela 的 CSS 是静态的，屏幕尺寸却只有运行时才知道（而且异步），
+  // 所以纵向几何只能走内联 style —— 这是"一份代码适配多型号"的关键。
+  // 查看器里所有控件都贴底，所以位置统一写成「设计高 - 固定偏移」。
+  applyGeometry() {
+    this.lay = currentLayout()
+    const L = this.lay
+    const p = (v) => v + 'px'
+
+    // ⚠️ 用视口百分比，**不要**用算出来的 W/H：
+    // 一旦引擎算的尺寸和运行时真实视口不同源，页面就会被当成可滚动内容
+    // （红米手表上表现为「界面能上下滑」）。100% 相对的是视口，与数值无关。
+    this.pageStyle = 'width:100%;height:100%;'
+    // 列表可视高 = 设计高 - 上固定块(68) - 下固定块(48)，再减 6 与返回按钮留条缝
+    this.listStyle = 'width:' + p(L.W) + ';height:' + p(Math.max(86, L.H - 122)) + ';'
+    this.backStyle = 'top:' + p(L.H - 48) + ';'
+
+    // 查看器整屏铺满：宽高必须用设计空间的值，否则高屏上 CG 只占上半屏
+    this.viewerStyle = 'width:' + p(L.W) + ';height:' + p(L.H) + ';'
+    // 点击热区：左右各 48 宽，纵向从 TAP_TOP 到底栏上方
+    const tapH = Math.max(60, L.H - TAP_TOP - TAP_BOTTOM)
+    this.zlStyle = 'height:' + p(tapH) + ';'
+    this.zrStyle = 'left:' + p(L.W - TAP_W) + ';height:' + p(tapH) + ';'
+
+    this.hintPlateStyle = 'top:' + p(L.H - HINT_PLATE_BOTTOM) + ';width:' + p(L.W - 28) + ';'
+    this.vHintStyle = 'top:' + p(L.H - HINT_PLATE_BOTTOM + HINT_PLATE_GAP) + ';width:' + p(L.W) + ';'
+    // 轨道宽由 layout.js 给定（240），滑块宽 = 轨道 × 屏幕宽/图宽（pro 上 94）
+    this.trackW = TRACK_W
+    this.indW = L.cgTrackW
+    // 轨道在提示底板内部（原版式：底板 384..422，轨道 412..417）
+    this.indTrackStyle = 'top:' + p(L.H - HINT_PLATE_BOTTOM + TRACK_IN_PLATE) +
+      ';left:' + p(L.cgTrackLeft) + ';width:' + p(this.trackW) + ';'
+    this.vBarStyle = 'top:' + p(L.H - BAR_H - BAR_BOTTOM) + ';'
+    this.indStyle = this.indStyleNow()
+
+    // CG 拖动几何：图宽由 layout.js 按屏幕比例算出（pro 上 = 854，与素材一致），
+    // 可拖范围就是图比屏幕宽出来的那部分。
+    CG_PAN_RANGE = L.cgRange
+    CG_PAN_STEP = Math.round(CG_PAN_RANGE / 3)
+    // 分母是手指从屏幕中间起手的实际行程（设计宽的一半），不是整屏宽
+    CG_DRAG_GAIN = CG_PAN_RANGE > 0
+      ? Math.round(CG_PAN_RANGE / (L.W / 2) * CG_DRAG_MARGIN * 1000) / 1000
+      : 1
+  },
+
+  // 滑块的 left：0 表示看到最左，1 表示看到最右。
+  // 轨道宽 - 滑块宽 = 滑块能走的距离，两者都随屏幕比例变，所以现算。
+  indStyleNow() {
+    const span = Math.max(0, this.trackW - this.indW)
+    const ratio = CG_PAN_RANGE > 0 ? (-this.cgLeft / CG_PAN_RANGE) : 0
+    return 'width: ' + this.indW + 'px; left: ' + Math.round(span * ratio) + 'px;'
+  },
+
+  build() {
+    const rows = []
+    let open = 0
+    for (let i = 0; i < this.groups.length; i++) {
+      const g = this.groups[i]
+      const ok = !!this.seen[g.u]
+      if (ok) open++
+      rows.push({
+        th: g.th,
+        n: g.n,
+        ok: ok,
+        st: ok ? (g.im.length + ' 张') : '未解锁'
+      })
+    }
+    this.rows = rows
+    this.openCount = open
+    this.total = this.groups.length
+  },
+
+  ban() {},
+  lock() { this.lockTap = Date.now() },
+
+  open(i) {
+    this.lock()
+    const g = this.groups[i]
+    if (!g) return
+    if (!this.seen[g.u]) {
+      prompt.showToast({ message: '还没在剧情里看到这一组' })
+      return
+    }
+    this.curGroup = i
+    this.curPage = 0
+    this.vName = g.n
+    this.pageAll = g.im.length
+    this.showPage()
+    this.viewing = true
+  },
+
+  showPage() {
+    const g = this.groups[this.curGroup]
+    if (!g) return
+    this.bigSrc = IMG[g.im[this.curPage]] || ''
+    this.pageNo = this.curPage + 1
+    // 每张 CG 都从中间开始看 —— 这是最常见的构图，两侧按需拖出来
+    this.setPan(CG_PAN_RANGE / 2)
+  },
+
+  setPan(v) {
+    let l = v
+    if (l > 0) l = 0
+    if (l < -CG_PAN_RANGE) l = -CG_PAN_RANGE
+    l = Math.round(l)
+    this.cgLeft = l
+    // 尺寸与位置必须写在同一个 style 里：图宽随屏幕比例变（lay.cgW），
+    // 只写 left 的话在非 pro 机型上会按兜底的 854 缩放。
+    this.cgStyle = 'width: ' + this.lay.cgW + 'px; left: ' + l + 'px;'
+    this.canLeft = l < -2
+    this.canRight = l > -CG_PAN_RANGE + 2
+    this.indStyle = this.indStyleNow()
+  },
+
+  // ---- 连续拖动：left 跟着手指走，不是一格一格跳
+  onCgTouchStart(e) {
+    const x = readX(e)
+    if (x === null) return
+    this.touchX = x
+    this.touchLeft = this.cgLeft
+  },
+
+  onCgTouchMove(e) {
+    if (this.touchX === null) return
+    const x = readX(e)
+    if (x === null) return
+    // 乘上 CG_DRAG_GAIN：屏幕太窄，1:1 跟手一次拖不完整个范围
+    this.setPan(this.touchLeft + (x - this.touchX) * CG_DRAG_GAIN)
+  },
+
+  onCgTouchEnd() { this.touchX = null },
+
+  // ---- 兜底一：滑动
+  onPanSwipe(e) {
+    const dir = readDir(e)
+    if (dir === 'left') this.setPan(this.cgLeft - CG_PAN_STEP)      // 往左滑 = 看右边
+    else if (dir === 'right') this.setPan(this.cgLeft + CG_PAN_STEP)
+  },
+
+  // ---- 兜底二：点左右两侧
+  panPrev() { this.lock(); this.setPan(this.cgLeft + CG_PAN_STEP) },
+  panNext() { this.lock(); this.setPan(this.cgLeft - CG_PAN_STEP) },
+
+  prev() {
+    this.lock()
+    const g = this.groups[this.curGroup]
+    if (!g) return
+    this.curPage = (this.curPage - 1 + g.im.length) % g.im.length
+    this.showPage()
+  },
+
+  next() {
+    this.lock()
+    const g = this.groups[this.curGroup]
+    if (!g) return
+    this.curPage = (this.curPage + 1) % g.im.length
+    this.showPage()
+  },
+
+  closeView() {
+    this.lock()
+    this.viewing = false
+    this.bigSrc = ''
+    this.vName = ''
+  },
+
+  back() { router.back() }
+}
+</script>

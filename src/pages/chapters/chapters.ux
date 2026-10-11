@@ -1,0 +1,174 @@
+<template>
+  <div class="page" style="{{pageStyle}}" onswipe="ban">
+    <text class="title">章节选择</text>
+    <text class="sub">共 {{count}} 章 · 上下滑动 · 点按开始</text>
+
+    <list id="chap-list" class="lst" style="{{listStyle}}" bounces="true" onswipe="ban">
+      <list-item class="item" for="{{rows}}" tid="cid" onclick="pick($idx)" onswipe="ban">
+        <div class="card">
+          <text class="no">{{$item.no}}</text>
+          <text class="nm">{{$item.name}}</text>
+          <text class="mk">{{$item.mark}}</text>
+        </div>
+      </list-item>
+    </list>
+
+    <div class="back" style="{{backStyle}}" onclick="back" onswipe="ban"><text class="btn-t">返回</text></div>
+  </div>
+</template>
+
+<style>
+  /* ⚠️ 下面写死的 top / height 只是**内联样式没生效时的兜底**（= 手环 9 Pro 的值）。
+     真正的纵向几何由 common/layout.js 按运行时探到的屏幕比例算出，见 applyGeometry()。
+     336×480 上两者逐像素相同，Pro 的观感不变。 */
+  .page { width: 336px; height: 480px; background-color: #14101a; position: relative; }
+  .title { position: absolute; top: 12px; left: 0px; width: 336px; text-align: center;
+           font-size: 24px; color: #ffd8e6; font-weight: bold; }
+  .sub { position: absolute; top: 44px; left: 0px; width: 336px; text-align: center;
+         font-size: 14px; color: #9c8f9b; }
+
+  /* 用 <list> 而不是 <scroll>：手环上 list 的惯性滚动更可靠，
+     条目也做得更大（86px 高 / 字号 24），一屏只放 4 条，避免误触。
+     高度不能写死 358 —— 那是 480 高度下的剩余空间。列表上下各有一块固定内容
+     （标题区 68、返回按钮区 54），所以可视高 = 设计高 - 122，
+     336×824 上就能一屏显示 8 条，而不是下面空一大片。
+     Vela 的硬性要求：list 必须给显式宽高，所以宽高两个都写。 */
+  .lst { position: absolute; top: 68px; left: 0px; width: 336px; height: 358px; }
+
+  .item { width: 336px; height: 86px; }
+  .card { width: 312px; height: 74px; margin-left: 12px; margin-top: 6px; border-radius: 16px;
+          background-color: #241c2c; flex-direction: row; align-items: center;
+          padding-left: 14px; padding-right: 14px; }
+  .no { font-size: 17px; color: #cf9ec0; width: 38px; }
+  .nm { font-size: 24px; color: #ffe6ef; width: 226px; lines: 1; }
+  .mk { font-size: 16px; color: #7ee8e0; width: 18px; }
+
+  /* 返回按钮贴底：top = 设计高 - 48（= 按钮高 40 + 底边距 8） */
+  .back { position: absolute; top: 432px; left: 50px; width: 236px; height: 40px;
+          border-radius: 20px; background-color: #32243a;
+          align-items: center; justify-content: center; }
+  .btn-t { font-size: 19px; color: #ffffff; }
+</style>
+
+<script>
+import router from '@system.router'
+import file from '@system.file'
+import { loadAutoSave, loadCleared } from '../../common/reader.js'
+import { currentLayout, onLayoutReady } from '../../common/geo.js'
+
+const SAVE_MAGIC = 'yurite-band-1'
+
+// 列表上下两块固定内容的高度：标题区（副标题底 58 + 10 间距）与返回按钮区。
+// 返回按钮高 40、贴底留 8、列表底再留 6 的缝 → 下固定块 = 54。
+// 列表高度 = 设计高 - 这两块，屏越高能显示的行越多。
+const LIST_TOP = 68
+const LIST_BOTTOM = 54
+// 返回按钮：高 40、贴底留 8
+const BACK_H = 40
+const BACK_GAP = 8
+
+export default {
+  // 统一用 protected，不要用 data（两者不能共存，运行时会抛错）
+  protected: {
+    rows: [],
+    count: 0,
+
+    // —— 自适应几何：由 common/layout.js 按屏幕实际尺寸算出（设计坐标，宽恒 336）
+    lay: currentLayout(),
+    pageStyle: '', listStyle: '', backStyle: ''
+  },
+
+  onInit() {
+    // 自适应几何：先用当前已知的屏幕尺寸排一次，异步探测回来后再排一次。
+    // 放最前面，后面依赖几何的初始化才能用上。
+    this.applyGeometry()
+    onLayoutReady(() => { this.applyGeometry() })
+
+    this.starts = []
+    this.curChap = -1
+    this.cleared = false
+    // 先看有没有自动存档，好把「读到哪了」标出来并自动滚过去
+    loadAutoSave((d) => {
+      if (d && d.magic === SAVE_MAGIC && typeof d.chapter === 'number' && d.chapter >= 0) {
+        this.curChap = d.chapter
+      }
+      loadCleared((ok) => {
+        this.cleared = ok
+        this.loadIndex()
+      })
+    })
+  },
+
+  // ---------------------------------------------------------------- 自适应几何
+  // Vela 的 CSS 是静态的，屏幕尺寸却只有运行时才知道（而且异步），
+  // 所以纵向几何只能走内联 style —— 这是"一份代码适配多型号"的关键。
+  applyGeometry() {
+    this.lay = currentLayout()
+    const L = this.lay
+    const p = (v) => v + 'px'
+
+    // ⚠️ 用视口百分比，**不要**用算出来的 W/H：
+    // 一旦引擎算的尺寸和运行时真实视口不同源，页面就会被当成可滚动内容
+    // （红米手表上表现为「界面能上下滑」）。100% 相对的是视口，与数值无关。
+    this.pageStyle = 'width:100%;height:100%;'
+    this.listStyle = 'width:' + p(L.W) + ';height:' + p(Math.max(86, L.H - LIST_TOP - LIST_BOTTOM)) + ';'
+    this.backStyle = 'top:' + p(L.H - BACK_H - BACK_GAP) + ';'
+  },
+
+  loadIndex() {
+    file.readText({
+      uri: '/common/story/index.txt',
+      success: (data) => {
+        let idx = null
+        try { idx = JSON.parse(data.text) } catch (e) { idx = null }
+        if (!idx || !idx.chapters) {
+          this.rows = [{ no: '!', name: '剧本索引损坏', mark: '' }]
+          return
+        }
+        const rows = []
+        this.starts = []
+        const list = idx.chapters
+        for (let i = 0; i < list.length; i++) {
+          const c = list[i]
+          // 结局章不露出（结局要玩出来，不能直接跳）；
+          // 后日谈是真结局的奖励，通关前也不出现
+          if (c.hide) continue
+          if (c.need && !this.cleared) continue
+          // mark 为空字符串时元素结构不变，避免在 list-item 里用 if
+          rows.push({
+            no: String(rows.length + 1),
+            name: c.title,
+            mark: i === this.curChap ? '▶' : ''
+          })
+          this.starts.push(c.start)
+        }
+        this.rows = rows
+        this.count = rows.length
+        if (this.curChap > 0) this.scrollToCurrent()
+      },
+      fail: () => { this.rows = [{ no: '!', name: '读取剧本索引失败', mark: '' }] }
+    })
+  },
+
+  scrollToCurrent() {
+    this.$nextTick(() => {
+      try {
+        const el = this.$element('chap-list')
+        if (el && typeof el.scrollTo === 'function') {
+          el.scrollTo({ index: this.curChap, behavior: 'instant' })
+        }
+      } catch (e) {}
+    })
+  },
+
+  ban() {},
+
+  pick(i) {
+    const at = this.starts[i]
+    if (at === undefined) return
+    router.replace({ uri: 'pages/game', params: { at: String(at) } })
+  },
+
+  back() { router.back() }
+}
+</script>
