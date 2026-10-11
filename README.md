@@ -216,6 +216,73 @@ python -m unrpyc game/script.rpyc
 | `$ flag += 1` / `if flag >= n` | 变量与条件 |
 | `"台词"` / `角色 "台词"` | 一句台词 |
 
+#### 原作是 Unity 的话
+
+Unity 游戏没有 `.rpa`／`.rpy`，是另一套结构。先看游戏目录：
+
+```
+GameName.exe
+GameName_Data/
+  level0                    场景与部分资源
+  resources.assets          资源主包
+  sharedassets0.assets      按场景分的资源
+  StreamingAssets/          通常是明文（JSON / XML / 文本）
+  Managed/                  编译后的 C# 程序集（Assembly-CSharp.dll）
+GameName_Data/StreamingAssets/AssetBundles/   有些游戏把资源另打成 bundle
+```
+
+**脚本和文本优先翻 `StreamingAssets/`** —— 那里大多是明文。
+很多对话系统（Ink、Yarn Spinner、Naninovel）把剧本存成 JSON／txt，直接就能读。
+
+**其余资源用工具解包**：
+
+| 工具 | 形态 | 适合 |
+|---|---|---|
+| [AssetRipper](https://github.com/AssetRipper/AssetRipper) | GUI | **首选**。支持版本最广，能直接导出图片并把 MonoBehaviour 转成可读的 JSON |
+| [AssetStudio](https://github.com/Perfare/AssetStudio) | GUI | 快速浏览、批量导出贴图 |
+| [UnityPy](https://github.com/K0lb3/UnityPy) | Python 库 | 要**写脚本批量处理**时用它（下面有例子）|
+
+用 AssetRipper 的话基本是「拖进游戏目录 → Export → 得到 `ExportedProject/`」，
+里面 `Assets/` 是图片和文本，`Assets/Scripts/` 是反编译出来的 C# —— **剧本常常在这里**。
+
+**找剧本的三个地方**，按可能性排序：
+
+1. `StreamingAssets/` 里的明文文件
+2. AssetRipper 导出的 TextAsset（`.txt` / `.json` / `.bytes`）
+3. **MonoBehaviour**（对话系统的自定义组件）—— 用 AssetRipper 导出成 JSON 看字段名，
+   里面通常是「说话人 / 正文 / 下一条」这样的结构
+
+**用 UnityPy 自己抓 MonoBehaviour**（当 AssetRipper 的导出不够用时）：
+
+```python
+import UnityPy
+
+env = UnityPy.load("GameName_Data")          # 传整个 _Data 目录
+
+for obj in env.objects:
+    if obj.type.name == "MonoBehaviour":
+        tree = obj.read_typetree()           # 转成 dict
+        # 按字段猜是不是剧本：有 text / content / dialogue 之类就打印看看
+        if any(k in tree for k in ("text", "content", "dialogue", "lines")):
+            print(tree)
+```
+
+拿到台词之后再套前面那张对照表，转成 Yurite 的节点就行。
+
+**贴图**：Unity 的图在 `Texture2D` 里，而且**常被 Sprite Atlas 打成图集**
+（一张大图 + 每张小图的坐标）。导出时要：
+
+- 普通贴图：直接导成 PNG
+- **图集**：先导出大图，再按 sprite 的 `rect` 裁成一张张小图（AssetStudio 勾
+  "Export → Sprite" 会自动裁；UnityPy 里读 `Sprite` 对象的 `m_Rect` 自己裁）
+
+导出后统一转成引擎要的尺寸（见第 3 步的公式）。
+
+> ⚠️ **权利提醒**：上面这些工具是正当的技术手段，但**解包出来的是别人的作品**。
+> 移植前先确认你有权这么做 —— 自己的作品、已获授权、或者原作许可允许的范围。
+> 本引擎只提供技术，不附带任何素材。
+
+
 ---
 
 ### 第 2 步：把剧本转成节点
@@ -504,4 +571,6 @@ profiles.json               设备档案（尺寸 / 包名 / 版本）
 
 ## 许可
 
-MIT，见 [LICENSE](LICENSE)。
+**0BSD**（BSD Zero Clause License），见 [LICENSE](LICENSE)。
+
+随便用、改、再发布，**不需要保留署名**。

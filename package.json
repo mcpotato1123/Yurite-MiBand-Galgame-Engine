@@ -19,5 +19,6 @@
   },
   "browserslist": [
     "chrome 65"
-  ]
+  ],
+  "license": "0BSD"
 }
