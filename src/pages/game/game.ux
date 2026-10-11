@@ -1048,7 +1048,7 @@ export default {
     this.lock()
     this.menu = false
     if (!this.story) return
-    // 跳过结局章；后日谈没通关也不给跳（否则等于剧透）
+    // 跳过结局章；通关奖励章节没通关也不给跳（否则等于剧透）
     const list = this.story.chapters
     let i = this.chapterIndex() + 1
     while (i < list.length && (list[i].hide || (list[i].need && !this.cleared))) i++

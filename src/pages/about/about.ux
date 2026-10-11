@@ -19,7 +19,7 @@
     <div class="mask" style="{{maskStyle}}" if="{{eggOpen}}"></div>
     <div class="egg" style="{{eggStyle}}" if="{{eggOpen}}">
       <text class="egg-t">？？？</text>
-      <div class="egg-b" onclick="unlockAfter" onswipe="ban"><text class="egg-bt">解锁 · 后日谈</text></div>
+      <div class="egg-b" onclick="unlockAfter" onswipe="ban"><text class="egg-bt">解锁 · 通关奖励</text></div>
       <div class="egg-b" onclick="unlockCg" onswipe="ban"><text class="egg-bt">解锁 · 全部 CG</text></div>
       <div class="egg-b egg-c" onclick="closeEgg" onswipe="ban"><text class="egg-bt">关闭</text></div>
     </div>
@@ -101,36 +101,22 @@ const EGG_H = 212            // 彩蛋框高，纵向居中
 // 这里写的是原始段落，具体断行交给 common/reader.js 的 wrapText()，
 // 和正文页共用同一套逻辑。
 const ABOUT = [
-  ['s', '故事梗概'],
-  ['p', '在一个由「天选试」决定一切的世界里——'],
-  ['p', '国家每三年举办一次天选试，一次录取一千人，考核内容全部是美少女游戏（Galgame）。'],
-  ['p', '通过者握有制定规则、影响国运的权力。万般皆下品，惟有旮旯高。'],
+  ['s', '关于这个引擎'],
+  ['p', 'Yurite 是一个跑在穿戴设备上的 Galgame 引擎。版面由引擎在运行时按屏幕算，'],
+  ['p', '你只需要提供剧本和图片。'],
   ['g', ''],
-  ['p', '主角陈舟是个不折不扣的 Galgame 废萌党。比起上学，他更想打游戏。'],
+  ['p', '这里换成你自己作品的介绍 —— 世界设定、登场角色、你想说的话。'],
   ['g', ''],
-  ['p', '林曦是他的青梅竹马兼「好哥们」，比谁都温柔，却对 Galgame 既无兴趣也无才能。'],
   ['g', ''],
-  ['p', '江晚晴永远一副尽在掌握的样子，在三人之间斡旋，一步步走向她要的结局。'],
+  ['s', '支持的设备'],
+  ['p', '小米手环 9 / 10 标准版、小米手环 9 Pro / 10 Pro、REDMI Watch 5 / 6。'],
   ['g', ''],
-  ['p', '还有小涟——只有他能看见的纯白少女，与月光同在。'],
-  ['g', ''],
-  ['p', '在「现实的 Galgame」里，他要面对的不是攻略路线，而是一个必须做出选择的世界。'],
-  ['g', ''],
-  ['s', '结局'],
-  ['p', '真结局 · 这片月幕：登上天选台，拒绝「剧情作」的做法，全选，全都要——创造全员幸福的结局。'],
-  ['g', ''],
-  ['p', '结局 · 二人的世界：退出殿试，婉拒重职，与她们平和地告别。'],
-  ['g', ''],
-  ['p', '结局 · 回归日常：带着温暖的心情活下去，活在一个有你们的世界。'],
-  ['g', ''],
-  ['p', 'Bad End · 未能触碰的世界：省试落选，什么都无所谓了。'],
-  ['g', ''],
-  ['p', '后日谈 · 诺提拉：深夜，刚通关一部 Galgame 的玩家，在家里遇见了自称诺提拉的金瞳少女。'],
+  ['p', '引擎会自动识别设备并给出对应版面；认不出的设备也能跑，只是没有针对性微调。'],
   ['g', ''],
   ['s', '版权信息'],
-  ['p', '本应用为非官方、非商业性的个人移植作品，与 AstroBox、小米（Xiaomi）均无关联，亦未获其授权或认可。'],
+  ['p', '这里写你自己的版权声明与致谢。'],
   ['g', ''],
-  ['p', '剧本文字与全部美术资源（背景 / 立绘 / CG / 标题画）版权归原作 Yurite 及其开发方「诺提拉观察所」所有。'],
+          ['p', '这里写你的版权信息与致谢。'],
   ['g', ''],
   ['p', '素材仅用于学习与交流，请勿用于任何商业用途。如有侵权，请联系删除。'],
   ['g', ''],
@@ -226,12 +212,12 @@ export default {
 
   closeEgg() { this.lock(); this.eggOpen = false },
 
-  // 解锁后日谈：写 cleared 标记，章节选择里就会出现「后日谈 · 诺提拉」
+  // 解锁通关奖励：写 cleared 标记，章节选择里就会出现「通关奖励
   unlockAfter() {
     this.lock()
     this.eggOpen = false
     markCleared(() => {
-      prompt.showToast({ message: '已解锁「后日谈 · 诺提拉」' })
+      prompt.showToast({ message: '已解锁「通关奖励' })
     })
   },
 

@@ -131,7 +131,7 @@ export default {
         for (let i = 0; i < list.length; i++) {
           const c = list[i]
           // 结局章不露出（结局要玩出来，不能直接跳）；
-          // 后日谈是真结局的奖励，通关前也不出现
+          // 通关奖励章节是真结局的奖励，通关前也不出现
           if (c.hide) continue
           if (c.need && !this.cleared) continue
           // mark 为空字符串时元素结构不变，避免在 list-item 里用 if

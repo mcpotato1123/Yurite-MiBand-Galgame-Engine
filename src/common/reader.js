@@ -152,7 +152,7 @@ export function saveSeen(list, done) {
 }
 
 // ---------------------------------------------------------------- 通关记录
-// 只有真结局才算通关；后日谈是通关奖励，通关前不出现在章节选择里
+// 只有真结局才算通关；通关奖励章节是通关奖励，通关前不出现在章节选择里
 export function loadCleared(done) {
   readJSON('cleared', null, (v) => done(!!(v && v.ok)))
 }

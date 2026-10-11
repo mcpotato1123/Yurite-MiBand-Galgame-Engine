@@ -40,7 +40,7 @@
 
     <!-- 实时预览 -->
     <div class="pv" style="{{pvBoxStyle}}">
-      <text class="pv-name" style="{{pvNameStyle}}">林曦</text>
+      <text class="pv-name" style="{{pvNameStyle}}">角色名</text>
       <text class="pv-line" style="{{pvStyle}}">想成为Galgame领域大神！！！</text>
     </div>
 
