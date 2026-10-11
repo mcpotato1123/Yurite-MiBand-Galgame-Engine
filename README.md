@@ -226,11 +226,11 @@ python -m unrpyc game/script.rpyc
 
 | 你的原作 | 转成 |
 |---|---|
-| 旁白 `"月幕下，清辉洒落。"` | `{"t":"s","n":"","x":"月幕下，清辉洒落。"}` |
-| 台词 `林曦 "你来啦"` | `{"t":"s","n":"林曦","x":"你来啦"}` |
+| 旁白 `"这是一句旁白。"` | `{"t":"s","n":"","x":"这是一句旁白。"}` |
+| 台词 `角色 "你来啦"` | `{"t":"s","n":"林曦","x":"你来啦"}` |
 | `scene bg_classroom` | 在那一步上加 `"bg": <背景号>`，**并清空 `cs`** |
-| `show lx at center` | 加 `"cs":[{"k":"lx","i":<图号>,"s":"c"}]` |
-| 一次显示两个 | `"cs":[{"k":"lx","i":1,"s":"left"},{"k":"jwq","i":2,"s":"right"}]` |
+| `show lx at center` | 加 `"cs":[{"k":"charA","i":<图号>,"s":"c"}]` |
+| 一次显示两个 | `"cs":[{"k":"charA","i":1,"s":"left"},{"k":"jwq","i":2,"s":"right"}]` |
 | `hide lx` | 把 `cs` 里对应项去掉；全没了就写 `"cs":[]` |
 | `menu:` 选项 | `{"t":"o","x":"提示","o":[{"t":"选项A","j":<节点号>},{"t":"选项B","j":<节点号>}]}` |
 | `jump label` | `{"t":"j","j":<节点号>}` |
@@ -248,7 +248,7 @@ label start:
     scene bg_room
     "房间里很安静。"
     show lx at center
-    lx "你在想什么？"
+    角色 "你在想什么？"
     menu:
         "说实话":
             jump honest
@@ -257,7 +257,7 @@ label start:
 
 label honest:
     $ trust += 1
-    lx "……这样啊。"
+    角色 "……这样啊。"
     return
 ```
 
@@ -266,10 +266,10 @@ label honest:
 ```json
 [
   {"t":"s","n":"","x":"房间里很安静。","bg":0,"cs":[]},
-  {"t":"s","n":"lx","x":"你在想什么？","cs":[{"k":"lx","i":1,"s":"c"}]},
+  {"t":"s","n":"角色","x":"你在想什么？","cs":[{"k":"charA","i":1,"s":"c"}]},
   {"t":"o","x":"","o":[{"t":"说实话","j":3},{"t":"岔开话题","j":6}]},
   {"t":"f","v":"trust","n":1},
-  {"t":"s","n":"lx","x":"……这样啊。"},
+  {"t":"s","n":"角色","x":"……这样啊。"},
   {"t":"e","x":"示例结局"}
 ]
 ```
@@ -367,11 +367,11 @@ def sp(src, dst):    # 立绘：等比缩到高 380k
 // 下标就是剧本节点里的资源号
 export const IMG = [
   "/common/img/b/room.png",     // 0
-  "/common/img/s/lx_c.png",     // 1
+  "/common/img/s/charA_c.png",     // 1
   "/common/img/c/cg01.png",     // 2
 ]
 export const BG = { "room": 0 }                     // 背景名 -> 下标
-export const SP = { "lx|c": 1, "lx|left": 1 }        // "立绘名|槽位" -> 下标
+export const SP = { "charA|c": 1, "charA|left": 1 }        // "立绘名|槽位" -> 下标
 ```
 
 `src/common/cglist.js`：
