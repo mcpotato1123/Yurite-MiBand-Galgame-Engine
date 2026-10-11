@@ -137,7 +137,8 @@ Vela 这套东西有些行为和常见前端不一样，踩过一次就别再踩
 
 ```bash
 # 1. 生成占位内容（纯色图 + 占位剧本），不装任何美术资源也能跑
-python tools/gen_demo.py .
+#    img/ 一次只放得下一个档案的图，所以出图要指定档案
+python tools/gen_demo.py . --profile pro      # 或 std / watch
 
 # 2. 布局自检（几何引擎的正确性全靠它）
 node tools/test_layout.mjs

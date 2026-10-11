@@ -24,6 +24,14 @@ import zlib
 
 PROJ = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else '.')
 
+# 档案名：python tools/gen_demo.py . --profile std
+# img/ 一次只放得下一个档案的图，所以要按档案出
+_key = 'pro'
+if '--profile' in sys.argv:
+    _i = sys.argv.index('--profile')
+    if len(sys.argv) > _i + 1:
+        _key = sys.argv[_i + 1]
+
 # ---------------------------------------------------------------- 0. 极小 PNG 写入
 def png(path, w, h, rgb):
     """不依赖 Pillow，手写一张纯色 PNG（引擎不需要好看，只需要尺寸对）"""
@@ -43,7 +51,9 @@ def png(path, w, h, rgb):
 
 # ---------------------------------------------------------------- 1. 读设备档案
 prof = json.load(io.open(os.path.join(PROJ, 'profiles.json'), encoding='utf-8'))
-key = 'pro'
+key = _key
+if key not in prof['profiles']:
+    sys.exit('未知档案 %r，profiles.json 里只有 %s' % (key, ' / '.join(sorted(prof['profiles']))))
 pf = prof['profiles'][key]
 W, H = pf['asset']['w'], pf['asset']['h']
 k = W / 336.0
