@@ -141,6 +141,7 @@ for ci, (cid, title) in enumerate(CHAPS):
 nodes.append({"t": "e", "n": "", "x": "Demo 结束。把你的剧本接进来吧。"})
 
 story = os.path.join(BASE, 'story')
+os.makedirs(story, exist_ok=True)
 chunks, chapters = [], []
 for ci, (cid, title) in enumerate(CHAPS):
     part = nodes[ci * CH_SIZE:(ci + 1) * CH_SIZE]
