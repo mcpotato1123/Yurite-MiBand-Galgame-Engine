@@ -162,105 +162,303 @@ node tools/build.js --profile watch debug    # REDMI Watch 5/6
 
 ## 移植教程
 
-### 第 0 步：先搞清楚你原来是什么
+从零到装进手表，一步一步来。**每一步都有可照抄的例子。**
 
-本引擎的剧本格式是从 **Ren'Py** 工程抽出来的（每条 `say` / `scene` / `show` / `menu` 一个节点）。
-如果你的原作不是 Ren'Py，第 1 步要自己写个转换脚本，但**数据结构照抄下面即可**。
+### 第 0 步：准备
 
-### 第 1 步：剧本
+```bash
+git clone <这个仓库>
+cd Yurite
+npm install                       # 装 aiot-toolkit
+python tools/gen_demo.py . --profile pro   # 先出一套占位内容，确认工具链是通的
+node tools/build.js --profile pro debug    # 能出包就说明环境没问题
+```
 
-剧情放在 `src/common/story/`，切成若干分块 + 一份索引。
+跑通之后再动自己的内容。**别跳过这一步** —— 后面出错时你才能确定是自己的数据问题，
+不是环境问题。
 
-**索引 `index.txt`**（JSON）：
+---
+
+### 第 1 步：从原作里拿到素材和剧本
+
+原作是 Ren'Py 的话，游戏目录里通常有：
+
+```
+game/
+  script.rpy / script.rpyc     剧本（.rpyc 是编译过的，要反编译）
+  images/                      图片
+  *.rpa                        打包的资源（要解包）
+```
+
+**解包资源**（文件在 `*.rpa` 里）：
+
+```bash
+pip install rpatool
+rpatool -x game/archive.rpa -o unpacked/
+```
+
+**反编译剧本**（`.rpyc` → `.rpy`）：
+
+```bash
+pip install unrpyc
+python -m unrpyc game/script.rpyc
+```
+
+拿到 `.rpy` 之后，你要的东西是这几类语句：
+
+| Ren'Py | 含义 |
+|---|---|
+| `scene bg_xxx` | 换背景，**并清空全部立绘** |
+| `show xxx at center` | 显示立绘（`left` / `center` / `right` 是位置） |
+| `hide xxx` | 收起立绘 |
+| `menu:` + `"选项"` | 选项分支 |
+| `jump label` / `label xxx:` | 跳转与标签 |
+| `$ flag += 1` / `if flag >= n` | 变量与条件 |
+| `"台词"` / `角色 "台词"` | 一句台词 |
+
+---
+
+### 第 2 步：把剧本转成节点
+
+**目标格式**：`src/common/story/chunk-NNN.txt`，每个文件是一个 **JSON 数组**，一个元素一个节点。
+
+#### 逐条对照表
+
+| 你的原作 | 转成 |
+|---|---|
+| 旁白 `"月幕下，清辉洒落。"` | `{"t":"s","n":"","x":"月幕下，清辉洒落。"}` |
+| 台词 `林曦 "你来啦"` | `{"t":"s","n":"林曦","x":"你来啦"}` |
+| `scene bg_classroom` | 在那一步上加 `"bg": <背景号>`，**并清空 `cs`** |
+| `show lx at center` | 加 `"cs":[{"k":"lx","i":<图号>,"s":"c"}]` |
+| 一次显示两个 | `"cs":[{"k":"lx","i":1,"s":"left"},{"k":"jwq","i":2,"s":"right"}]` |
+| `hide lx` | 把 `cs` 里对应项去掉；全没了就写 `"cs":[]` |
+| `menu:` 选项 | `{"t":"o","x":"提示","o":[{"t":"选项A","j":<节点号>},{"t":"选项B","j":<节点号>}]}` |
+| `jump label` | `{"t":"j","j":<节点号>}` |
+| `if flag >= 3: jump x` | `{"t":"cj","v":"flag","op":">=","n":3,"j":<节点号>}` |
+| `$ flag += 1` | `{"t":"f","v":"flag","n":1}` |
+| `$ flag = 1` | `{"t":"sf","v":"flag","n":1}` |
+| 结局 | `{"t":"e","x":"结局文本"}` |
+
+#### 一个完整的例子
+
+原作：
+
+```renpy
+label start:
+    scene bg_room
+    "房间里很安静。"
+    show lx at center
+    lx "你在想什么？"
+    menu:
+        "说实话":
+            jump honest
+        "岔开话题":
+            jump dodge
+
+label honest:
+    $ trust += 1
+    lx "……这样啊。"
+    return
+```
+
+转成（`chunk-000.txt`）：
+
+```json
+[
+  {"t":"s","n":"","x":"房间里很安静。","bg":0,"cs":[]},
+  {"t":"s","n":"lx","x":"你在想什么？","cs":[{"k":"lx","i":1,"s":"c"}]},
+  {"t":"o","x":"","o":[{"t":"说实话","j":3},{"t":"岔开话题","j":6}]},
+  {"t":"f","v":"trust","n":1},
+  {"t":"s","n":"lx","x":"……这样啊。"},
+  {"t":"e","x":"示例结局"}
+]
+```
+
+注意三件事：
+
+1. **`bg` 那一步必须带 `cs: []`** —— 换景要清立绘，这是原作 `scene` 的语义。
+   漏了就会出现「本该没人的界面站着上一位」。
+2. **`j`（跳转）不要清 `cs`** —— 原作 `jump` 本来就不换景。
+3. **节点号是全局连续的**（跨分块累加），不是分块内序号。
+   `chapters[].start` 和 `nodes[].j` 用的都是全局号。
+
+#### 切片与索引
+
+节点总数几百到几千都没问题，切成每块 128 个：
+
+```python
+CH = 128
+for i in range(0, len(nodes), CH):
+    open('src/common/story/chunk-%03d.txt' % (i // CH), 'w', encoding='utf-8').write(
+        json.dumps(nodes[i:i+CH], ensure_ascii=False))
+```
+
+然后写索引 `src/common/story/index.txt`：
 
 ```json
 {
   "ver": 1,
   "title": "你的标题",
-  "nodeCount": 5569,
+  "nodeCount": 1234,
   "chunkSize": 128,
   "entry": 0,
-  "chapters": [ { "id": "1_1", "title": "第一章 · 开场", "start": 0 } ],
-  "chunks":   [ { "file": "/common/story/chunk-000.txt", "start": 0, "count": 128 } ]
+  "chapters": [{"id": "c1", "title": "第一章", "start": 0}],
+  "chunks":   [{"file": "/common/story/chunk-000.txt", "start": 0, "count": 128}]
 }
 ```
 
-**分块 `chunk-000.txt`**：一个 JSON 数组，每个元素是一个节点。节点类型：
+> `entry` 是「开始阅读」的起点。`chapters` 决定章节跳转页显示什么。
+> 想留一个通关后才出现的章节，把它放在最后，并且在 `reader.js` 的
+> 通关逻辑里控制（见 `markCleared` 的用法）。
 
-| `t` | 含义 | 字段 |
+---
+
+### 第 3 步：把图片切出来
+
+设 `k = 屏宽 / 336`（`pro` 档案是 1.0，`std` 是 0.631，`watch` 是 1.286）：
+
+| 放哪 | 尺寸 | 说明 |
 |---|---|---|
-| `s` | 一句台词 / 旁白 | `n` 说话人（空串=旁白）、`x` 正文、`bg` 背景号、`cs` 立绘、`cg` CG号、`tint` 色调 |
-| `o` | 选项 | `x` 提示、`o` 选项数组（每项 `{t: 文本, j: 跳转节点}`） |
-| `j` | 无条件跳转 | `j` 目标节点 |
-| `cj` | 条件跳转 | `v` 标志名、`op` 比较符、`n` 值、`j` 目标 |
-| `f` | 标志自增 | `v` 名、`n` 增量 |
-| `sf` | 标志赋值 | `v` 名、`n` 值 |
-| `e` | 结局 | `x` 结局文本 |
+| `src/common/img/b/` | `(2×屏宽) × 屏高` | 背景。宽一倍是给全景平移留余量，会自动缓慢左右推 |
+| `src/common/img/c/` | `ceil(屏高 × 16 / 9) × 屏高` | CG。**是 ceil 不是 round** |
+| `src/common/img/s/` | `round(143k) × round(380k)` | 立绘 |
+| `src/common/img/t/` | `round(96k) × round(54k)` | CG 缩略图 |
+| `src/common/home.png` | `屏宽 × 屏高` | 主页画 |
+| `src/common/icon.png` | **固定 192×192** | 启动器图标，**不要跟着屏幕缩放** |
 
-两个**语义上很容易搞错**的地方：
+用 Pillow 批量处理：
 
-- **`bg` 相当于 Ren'Py 的 `scene`，会清空所有立绘。** 如果换景时还想有人，
-  那一步要**同时带 `cs`**。只把 `bg` 当「换背景」的话，会出现「本该没人的界面站着上一位」。
-- **`j`（跳转）不清立绘** —— Ren'Py 的 `jump` 本来就不换景，同场景内跳转应当保持。
+```python
+from PIL import Image
+IMG_W, IMG_H = 336, 480          # pro 档案
+K = IMG_W / 336.0
 
-**`cs` 是立绘数组**，每项 `{k: 角色键, i: 图片号, s: 槽位}`，槽位取 `left` / `c` / `right`。
-**空数组 `[]` 表示清空**。
+def bg(src, dst):    # 背景：裁成 2:1 再缩
+    im = Image.open(src).convert('RGB')
+    im = im.resize((IMG_W * 2, IMG_H), Image.LANCZOS)
+    im.save(dst, 'PNG', optimize=True)
 
-### 第 2 步：图片
+def cg(src, dst):    # CG：按 16:9 裁
+    w = -(-IMG_H * 16 // 9)
+    Image.open(src).convert('RGB').resize((w, IMG_H), Image.LANCZOS).save(dst, 'PNG', optimize=True)
 
-尺寸公式（`tools/build.js` 的预检按这个核对，对不上会拒绝构建）：
-
-设 `k = 屏宽 / 336`：
-
-| 用途 | 尺寸 |
-|---|---|
-| 背景 `img/b/` | `(2×屏宽) × 屏高` —— 宽一倍是给全景平移留余量 |
-| CG `img/c/` | `ceil(屏高 × 16 / 9) × 屏高` ← **是 ceil 不是 round** |
-| 立绘 `img/s/` | `round(143k) × round(380k)` |
-| CG 缩略 `img/t/` | `round(96k) × round(54k)` |
-| 主页画 `home.png` | `屏宽 × 屏高` |
-| 图标 `icon.png` | **固定 192×192** |
-
-> `icon.png` 是启动器图标、规格固定，**不要跟着屏幕缩放**。
-> 踩过：早期版本按 `round(192k)` 出图，在 REDMI Watch 上算出 247×247，
-> 超规格的图标让安装器崩掉，真机上表现成「装完重启」。
-
-`tools/gen_demo.py` 就是按这些公式生成占位图的，可以照它改。
-
-### 第 3 步：索引表
-
-`src/common/assets.js`：图片路径表，**下标就是剧本节点里的资源号**。
-
-```js
-export const IMG = ["/common/img/b/b0.png", "/common/img/c/c0.png", ...]
-export const BG = { "b0": 0, "b1": 1 }        // 背景名 -> 下标
-export const SP = { "s0|c": 2, "s0|left": 2 } // 立绘名|槽位 -> 下标
+def sp(src, dst):    # 立绘：等比缩到高 380k
+    h = round(380 * K)
+    im = Image.open(src).convert('RGBA')
+    im = im.resize((round(im.width * h / im.height), h), Image.LANCZOS)
+    im.save(dst, 'PNG', optimize=True)
 ```
 
-`src/common/cglist.js`：CG 鉴赏的分组。
+> **立绘必须留透明通道**（`RGBA` + PNG）—— 底色是背景，不是白。
+> 背景和 CG 用 `RGB` 就行，能小不少。
+
+**体积预算**：真机实测图片总量**别超过 9 MB**，否则安装可能失败。
+超了就把背景/CG 的调色板量化一下（Pillow 的 `quantize(colors=64)`）。
+
+---
+
+### 第 4 步：写索引表
+
+图片要靠**下标**引用，所以要有两张表。
+
+`src/common/assets.js`：
+
+```js
+// 下标就是剧本节点里的资源号
+export const IMG = [
+  "/common/img/b/room.png",     // 0
+  "/common/img/s/lx_c.png",     // 1
+  "/common/img/c/cg01.png",     // 2
+]
+export const BG = { "room": 0 }                     // 背景名 -> 下标
+export const SP = { "lx|c": 1, "lx|left": 1 }        // "立绘名|槽位" -> 下标
+```
+
+`src/common/cglist.js`：
 
 ```js
 export const CGG = [
-  { n: "组名", th: "/common/img/t/g0.png", u: 108, im: [108, 109] }  // u = 解锁条件，im = 该组图片号
+  { n: "第一组", th: "/common/img/t/g0.png", u: 2, im: [2] }   // u=解锁条件图号, im=该组图片
 ]
 ```
 
-### 第 4 步：改品牌与包名
-
-- `src/manifest.json` 的 `package` / `name` / `versionName` / `versionCode`
-- `src/pages/about/about.ux` 里的 `APP_VER` **必须和 `versionName` 一致**，否则构建会拒绝
-- `profiles.json` 里三个档案的 `package` / 版本号
-
-### 第 5 步：加一个你自己的型号
-
-只动两处，**布局本身不用改**：
-
-1. `profiles.json` 加一条档案（屏幕尺寸 + 包信息）
-2. `src/common/models.js` 加一条型号（尺寸 + 型号字符串正则 + `tune`）
-
-比例推导会先排出一个合理版面，`tune` 只用来调得更好。
+（`tools/gen_demo.py` 会生成这两份的占位版，照它的格式改就行。）
 
 ---
+
+### 第 5 步：改品牌
+
+- `src/manifest.json` → `package`（改成你自己的，如 `com.yourname.game`）、`name`、`versionName`、`versionCode`
+- `profiles.json` → 三个档案里的 `package` / `versionName` / `versionCode` **要跟 manifest 一致**
+- `src/pages/about/about.ux` → `APP_VER` **必须等于 `versionName`**，否则构建会拒绝
+- `src/pages/about/about.ux` 的 `ABOUT` 数组 → 换成你自己作品的介绍
+
+---
+
+### 第 6 步：构建
+
+```bash
+python tools/gen_demo.py . --profile pro   # 只在你还没放自己的图时需要
+node tools/build.js --profile pro debug
+```
+
+产物在 `dist/`：
+
+```
+com.yourname.game.pro.debug.1.0.rpk
+```
+
+三个档案对应三类设备：
+
+| 档案 | 设备 |
+|---|---|
+| `pro` | 手环 9 Pro / 10 Pro（336×480） |
+| `std` | 手环 9 / 10 标准版（192×490 / 212×520） |
+| `watch` | REDMI Watch 5 / 6（432×514） |
+
+> **`img/` 一次只放得下一个档案的图。** 构建前会核对「现在这套图是不是这个档案的」，
+> 对不上直接拒绝 —— 免得打出「包名是 std、图是 pro」的包。
+> 要连图一起出，加 `--assets`。
+
+---
+
+### 第 7 步：装到手表
+
+1. 用 **AstroBox** 连接手表（小米账号 / Authkey 都行）
+2. 把 `dist/` 里的 `.rpk` 拖进去安装
+3. 装完在手表应用列表里找你的应用名
+
+> 支持列表见 AstroBox 文档。小米手环 9 及以后、REDMI Watch 5 及以后都支持。
+> 手环 8 / REDMI Watch 4 及更早不支持快应用。
+
+### 第 8 步：出问题了怎么查
+
+**先看日志。** 应用启动时会打这些：
+
+```
+[Yurite] onInit，参数 at= load= auto=
+[Yurite] 屏幕 336×480  型号字符串="M2311B1"  → 小米手环 9 Pro（fontBoost 1，设计高 480）
+[Yurite] 读取剧本索引…
+[Yurite] 索引 OK：节点 1234，分块 10
+[Yurite] 从序章开始
+[Yurite] 分块 OK /common/story/chunk-000.txt (128 节点)
+```
+
+**看不到这几行** → 页面没起来。检查 `manifest.json` 的路由、以及 `src/app.ux` 的入口。
+**能看到但画面黑** → 大概率是某个元素的尺寸/定位把画面盖住了，
+用 `tools/dump_layout.mjs` 导出各设备版面，对一下数值。
+
+本地能跑的自检：
+
+```bash
+node tools/test_layout.mjs      # 几何引擎：多设备 + 型号识别 + 与参考版式逐像素比对
+python tools/check_dup.py       # 对象字面量重名（编译期查不出来，会静默覆盖）
+node tools/dump_layout.mjs layout.json   # 把各型号版面导成 JSON
+```
+
+> `check_dup.py` 不是可选项。Vela 的页面脚本是一个大对象字面量，
+> **重名的方法不报错、后者静默覆盖前者** —— 我们因此让「离开阅读页关常亮」
+> 整段变成过死代码，编译和日志都看不出来。
 
 ## 目录结构
 
