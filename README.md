@@ -180,7 +180,7 @@ node tools/build.js --profile watch debug    # REDMI Watch 5/6
   "nodeCount": 5569,
   "chunkSize": 128,
   "entry": 0,
-  "chapters": [ { "id": "1_1", "title": "第一幕 · 月幕", "start": 0 } ],
+  "chapters": [ { "id": "1_1", "title": "第一章 · 开场", "start": 0 } ],
   "chunks":   [ { "file": "/common/story/chunk-000.txt", "start": 0, "count": 128 } ]
 }
 ```
