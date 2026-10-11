@@ -676,9 +676,9 @@ function pickFreshRpk() {
 
 /** 改成 `<package>.<档案>.<debug|release>.<versionName>.rpk`
  *
- * 文件名里**必须带档案名**：三个档案的包名统一成 com.galgod.band 之后，
+ * 文件名里**必须带档案名**：三个档案如果共用同一个包名，
  * 不带档案名的话 std / pro / watch 会生成同一个文件名，互相覆盖。
- * （包名统一是刻意的 —— AstroBox 上算同一个资源，按型号分发。） */
+ * （共用包名是常见做法 —— 应用商店上算同一个资源，按机型分发。） */
 function renameRpk(file, prof, label, profileId) {
   const want = prof.package + '.' + (profileId || 'pkg') + '.' + label +
     '.' + prof.versionName + '.rpk';
